@@ -1,4 +1,4 @@
-#BIOING 15 - Modelling Neural Systems
+#BIOING 15 - Modelling Neural Systems - module COMPUTATIONAL MODELS OF NEURONS AND MICROCIRCUITS
 
 GitHub Repository for the Course.
 

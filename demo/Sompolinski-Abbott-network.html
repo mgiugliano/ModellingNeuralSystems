@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chaotic RNN Simulation (Sompolinsky/Abbott Model)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: #e2e8f0; /* Tailwind slate-200 */
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #1e293b; /* Tailwind slate-800 */
+            border: 1px solid #334155; /* Tailwind slate-700 */
+            border-radius: 0.5rem;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+        input[type=range] {
+            accent-color: #3b82f6; /* Tailwind blue-500 */
+        }
+    </style>
+</head>
+<body class="p-6 max-w-5xl mx-auto flex flex-col gap-6">
+
+    <header class="border-b border-slate-700 pb-4">
+        <h1 class="text-3xl font-bold tracking-tight text-white mb-2">Continuous-Time Chaotic RNN</h1>
+        <p class="text-sm text-slate-400">
+            Numerical integration of: <code class="bg-slate-800 px-1 py-0.5 rounded text-blue-300">τ(dx/dt) = -x + g * J * tanh(x)</code><br>
+            Observing the thermodynamic limit phase transition to chaos (Sompolinsky et al., 1988; Abbott, 2016).
+        </p>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <!-- Controls Panel -->
+        <div class="col-span-1 bg-slate-800 p-5 rounded-lg border border-slate-700 flex flex-col gap-5">
+            <div>
+                <label for="gainSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Synaptic Gain ($g$): <span id="gainValue" class="text-blue-400 font-bold ml-1">1.50</span>
+                </label>
+                <input type="range" id="gainSlider" min="0.0" max="3.0" step="0.01" value="1.5" class="w-full cursor-pointer">
+                <p class="text-xs text-slate-500 mt-1">Controls the variance of the recurrent weights. $g < 1$: stable fixed point. $g > 1$: chaotic regime.</p>
+            </div>
+
+            <div>
+                <label for="nSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Network Size ($N$): <span id="nValue" class="text-blue-400 font-bold ml-1">250</span>
+                </label>
+                <input type="range" id="nSlider" min="50" max="1000" step="10" value="250" class="w-full cursor-pointer">
+                <p class="text-xs text-slate-500 mt-1">Rebuilds structural matrix $O(N^2)$. Sharpness of phase transition depends on $N \to \infty$.</p>
+            </div>
+
+            <div>
+                <label for="windowSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Time Window: <span id="windowValue" class="text-blue-400 font-bold ml-1">800</span> ms
+                </label>
+                <input type="range" id="windowSlider" min="100" max="3000" step="50" value="800" class="w-full cursor-pointer">
+                <p class="text-xs text-slate-500 mt-1">Adjusts the horizontal scale to visualize fast vs. slow timescales of the attractor.</p>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4">
+                <button id="perturbBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-4 rounded transition-colors shadow-sm mb-2">
+                    Inject Perturbation
+                </button>
+                <p class="text-xs text-slate-500">Kicks the membrane potentials to observe decay or divergence.</p>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4">
+                <div class="text-xs text-slate-400 flex justify-between mb-1">
+                    <span>Neurons (N):</span>
+                    <span class="font-mono">250</span>
+                </div>
+                <div class="text-xs text-slate-400 flex justify-between mb-1">
+                    <span>Plotted Units:</span>
+                    <span class="font-mono">10</span>
+                </div>
+                <div class="text-xs text-slate-400 flex justify-between">
+                    <span>Integration step (dt):</span>
+                    <span class="font-mono">1.0 ms</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Visualization Panel -->
+        <div class="col-span-1 md:col-span-3">
+            <div class="flex items-end mb-2 border-b border-slate-700">
+                <button id="tabTraces" class="px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors">Activity Traces</button>
+                <button id="tabSpectrum" class="px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors">Eigenvalue Spectrum</button>
+            </div>
+            <!-- Canvas container ensures relative sizing -->
+            <div class="w-full relative" style="height: 700px;">
+                <canvas id="rnnCanvas" class="w-full h-full"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for Web Worker eigenvalue computation
+        let eigWorker = null;
+        let isComputingSpectrum = false;
+
+        function computeEigenvaluesAsync(J0_2d, rnnInstance) {
+            // If the user scrubs the slider, terminate the previous O(N^3) computation
+            if (eigWorker) {
+                eigWorker.terminate();
+            }
+            isComputingSpectrum = true;
+            rnnInstance.eig0 = null;
+
+            // Create an inline Web Worker to prevent UI blocking
+            const workerCode = `
+                importScripts('https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js');
+                self.onmessage = function(e) {
+                    try {
+                        const eig = numeric.eig(e.data);
+                        self.postMessage({ success: true, re: eig.lambda.x, im: eig.lambda.y });
+                    } catch(err) {
+                        self.postMessage({ success: false, error: err.toString() });
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            eigWorker = new Worker(URL.createObjectURL(blob));
+
+            eigWorker.onmessage = function(e) {
+                isComputingSpectrum = false;
+                if (e.data.success) {
+                    rnnInstance.eig0 = { re: e.data.re, im: e.data.im };
+                } else {
+                    console.error("Background eigenvalue computation failed.", e.data.error);
+                }
+            };
+
+            // Send the 2D matrix to the worker
+            eigWorker.postMessage(J0_2d);
+        }
+
+        /**
+         * Core Computational Model
+         */
+        class ChaoticRNN {
+            constructor(N) {
+                this.N = N;
+                this.tau = 10.0;     // Membrane time constant (ms)
+                this.dt = 1.0;       // Integration time step (ms)
+                this.g = 1.5;        // Default gain
+                this.eig0 = null;    // Eigenvalues will be populated asynchronously
+                
+                // Initialize membrane potentials randomly [-0.1, 0.1]
+                this.x = new Float64Array(N);
+                for (let i = 0; i < N; i++) {
+                    this.x[i] = (Math.random() - 0.5) * 0.2;
+                }
+
+                // Generate Base Weight Matrix J0 ~ N(0, 1/N)
+                // The actual effective weight is J = g * J0
+                this.J0 = new Float64Array(N * N);
+                const std = 1.0 / Math.sqrt(N);
+                const J0_2d = Array.from({ length: N }, () => new Array(N));
+
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        const val = this.boxMullerRandom(0, std);
+                        this.J0[i * N + j] = val;
+                        J0_2d[i][j] = val;
+                    }
+                }
+                
+                // Offload O(N^3) computation to background thread
+                computeEigenvaluesAsync(J0_2d, this);
+            }
+
+            // Box-Muller transform for normally distributed random numbers
+            boxMullerRandom(mean, std) {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+                let num = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+                return num * std + mean;
+            }
+
+            // Inject a random stimulus to push the system out of a fixed point
+            perturb() {
+                for (let i = 0; i < this.N; i++) {
+                    this.x[i] += (Math.random() - 0.5) * 2.0; 
+                }
+            }
+
+            // Single step of Forward Euler integration
+            step() {
+                const nextX = new Float64Array(this.N);
+                const r = new Float64Array(this.N); // Firing rates
+                
+                // Calculate firing rates
+                for (let i = 0; i < this.N; i++) {
+                    r[i] = Math.tanh(this.x[i]);
+                }
+
+                // Compute dx/dt and update
+                for (let i = 0; i < this.N; i++) {
+                    let recurrentInput = 0.0;
+                    const rowOffset = i * this.N;
+                    
+                    // Matrix-vector multiplication: J0 * r
+                    for (let j = 0; j < this.N; j++) {
+                        recurrentInput += this.J0[rowOffset + j] * r[j];
+                    }
+                    
+                    // Multiply by gain parameter g here
+                    recurrentInput *= this.g;
+
+                    // Euler update: x_new = x_old + (dt/tau) * (-x_old + input)
+                    const dx = -this.x[i] + recurrentInput;
+                    nextX[i] = this.x[i] + (this.dt / this.tau) * dx;
+                }
+                
+                this.x = nextX;
+                return r; // Return rates for plotting
+            }
+        }
+
+        /**
+         * UI and Visualization Logic
+         */
+        let N_NEURONS = 250;
+        const N_PLOT = 10; // Increased to 10 neurons
+        const STEPS_PER_FRAME = 6; // Speeds up visual time (increased from 3 to 6)
+        let timeWindow = 800; // How many time steps (ms) to show on the canvas
+
+        let rnn = new ChaoticRNN(N_NEURONS);
+        
+        // Setup Canvas
+        const canvas = document.getElementById('rnnCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimize rendering
+        
+        // Handle canvas resize
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // History buffer for traces
+        const history = Array.from({ length: N_PLOT }, () => []);
+        
+        // Distinct colors for the traced neurons
+        const colors = [
+            '#ef4444', // red
+            '#3b82f6', // blue
+            '#10b981', // green
+            '#f59e0b', // yellow
+            '#8b5cf6', // purple
+            '#ec4899', // pink
+            '#06b6d4', // cyan
+            '#f97316', // orange
+            '#84cc16', // lime
+            '#14b8a6'  // teal
+        ];
+
+        // UI Binding
+        const gainSlider = document.getElementById('gainSlider');
+        const gainValueDisp = document.getElementById('gainValue');
+        const perturbBtn = document.getElementById('perturbBtn');
+        const nSlider = document.getElementById('nSlider');
+        const nValueDisp = document.getElementById('nValue');
+        const windowSlider = document.getElementById('windowSlider');
+        const windowValueDisp = document.getElementById('windowValue');
+
+        let currentTab = 'traces';
+        const tabTraces = document.getElementById('tabTraces');
+        const tabSpectrum = document.getElementById('tabSpectrum');
+
+        function switchTab(tab) {
+            currentTab = tab;
+            if (tab === 'traces') {
+                tabTraces.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors";
+                tabSpectrum.className = "px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors";
+            } else {
+                tabSpectrum.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors";
+                tabTraces.className = "px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors";
+            }
+        }
+
+        tabTraces.addEventListener('click', () => switchTab('traces'));
+        tabSpectrum.addEventListener('click', () => switchTab('spectrum'));
+
+        gainSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            rnn.g = val;
+            gainValueDisp.textContent = val.toFixed(2);
+        });
+
+        nSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            N_NEURONS = val;
+            nValueDisp.textContent = val;
+            
+            // Re-instantiate network to generate new N x N structural matrix
+            const currentG = rnn.g;
+            rnn = new ChaoticRNN(N_NEURONS);
+            rnn.g = currentG;
+            
+            // Clear history buffer for the traces to prevent visual artifacts
+            for (let i = 0; i < N_PLOT; i++) {
+                history[i] = [];
+            }
+        });
+
+        windowSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            timeWindow = val;
+            windowValueDisp.textContent = val;
+        });
+
+        perturbBtn.addEventListener('click', () => rnn.perturb());
+
+        // Main Animation Loop
+        function animate() {
+            // Run multiple integration steps per visual frame
+            let latestRates;
+            for (let s = 0; s < STEPS_PER_FRAME; s++) {
+                latestRates = rnn.step();
+                
+                // Record history for the selected neurons
+                for(let i=0; i<N_PLOT; i++) {
+                    history[i].push(latestRates[i]);
+                    // Limit history based on the maximum possible window size (e.g., 3000)
+                    if (history[i].length > 3000) {
+                        history[i].shift();
+                    }
+                }
+            }
+
+            // Rendering
+            ctx.fillStyle = '#1e293b'; // slate-800
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (currentTab === 'traces') {
+                const subplotHeight = canvas.height / N_PLOT;
+                // Compress the amplitude slightly to create padding between subplots
+                const amplitudeY = subplotHeight * 0.38; 
+
+                for (let i = 0; i < N_PLOT; i++) {
+                    const midY = (i + 0.5) * subplotHeight;
+
+                    // Draw center zero line for this subplot
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#475569'; // slate-600
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(0, midY);
+                    ctx.lineTo(canvas.width, midY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Draw subplot divider (except for the bottom edge)
+                    if (i < N_PLOT - 1) {
+                        const dividerY = (i + 1) * subplotHeight;
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#334155'; // slate-700
+                        ctx.lineWidth = 1;
+                        ctx.moveTo(0, dividerY);
+                        ctx.lineTo(canvas.width, dividerY);
+                        ctx.stroke();
+                    }
+
+                    // Add y-axis labels on the first subplot
+                    if (i === 0) {
+                        ctx.fillStyle = '#64748b';
+                        ctx.font = '10px sans-serif';
+                        ctx.fillText(' 1.0', 5, midY - amplitudeY + 8);
+                        ctx.fillText('-1.0', 5, midY + amplitudeY);
+                    }
+
+                    // Plot trace
+                    const trace = history[i];
+                    if (trace.length < 2) continue;
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = colors[i];
+                    ctx.lineWidth = 2;
+                    
+                    let started = false;
+                    const L = trace.length;
+                    const stepPixels = canvas.width / timeWindow;
+
+                    for (let t = 0; t < L; t++) {
+                        const distFromEnd = (L - 1) - t;
+                        
+                        // Only draw points that fall within the current horizontal window
+                        if (distFromEnd > timeWindow) continue;
+
+                        const x = canvas.width - (distFromEnd * stepPixels);
+                        const y = midY - (trace[t] * amplitudeY);
+                        
+                        if (!started) {
+                            ctx.moveTo(x, y);
+                            started = true;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.stroke();
+                }
+            } else if (currentTab === 'spectrum') {
+                const scale = canvas.height / 6; // Range ~[-3, 3] to fit max g
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                // Draw axes
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); // Real axis
+                ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvas.height); // Imag axis
+                ctx.stroke();
+
+                // Draw Re=1 Stability Boundary Line
+                const re1X = centerX + scale * 1.0;
+                ctx.strokeStyle = '#ef4444'; // Red line
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(re1X, 0);
+                ctx.lineTo(re1X, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw label for stability boundary
+                ctx.fillStyle = '#ef4444';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Re(λ) = 1 (Instability Threshold)', re1X + 10, 20);
+
+                // Draw Girko's circular law boundary (Theoretical radius = g)
+                ctx.strokeStyle = '#3b82f6'; // Blue circle
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, rnn.g * scale, 0, 2 * Math.PI);
+                ctx.stroke();
+
+                // Plot eigenvalues
+                if (isComputingSpectrum) {
+                    ctx.fillStyle = '#f59e0b'; // Amber
+                    ctx.font = '14px sans-serif';
+                    ctx.fillText('Computing O(N³) spectrum in background thread...', centerX - 140, centerY - 20);
+                } else if (rnn.eig0 && rnn.eig0.re) {
+                    ctx.fillStyle = '#94a3b8'; // slate-400
+                    for (let i = 0; i < rnn.N; i++) {
+                        // Effective eigenvalue lambda = g * lambda_0
+                        const re = rnn.g * rnn.eig0.re[i];
+                        const im = rnn.eig0.im ? rnn.g * rnn.eig0.im[i] : 0;
+                        
+                        ctx.beginPath();
+                        ctx.arc(centerX + re * scale, centerY - im * scale, 2.5, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = '14px sans-serif';
+                    ctx.fillText('Eigenvalue spectrum unavailable.', centerX - 100, centerY - 20);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start loop
+        animate();
+
+    </script>
+</body>
+</html>

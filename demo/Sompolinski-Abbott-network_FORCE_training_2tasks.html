@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chaotic RNN Simulation (Sompolinsky/Abbott Model)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
+    <style>
+        body {
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: #e2e8f0; /* Tailwind slate-200 */
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            background-color: #1e293b; /* Tailwind slate-800 */
+            border: 1px solid #334155; /* Tailwind slate-700 */
+            border-radius: 0.5rem;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+        }
+        input[type=range] {
+            accent-color: #3b82f6; /* Tailwind blue-500 */
+        }
+    </style>
+</head>
+<body class="p-6 max-w-5xl mx-auto flex flex-col gap-6">
+
+    <header class="border-b border-slate-700 pb-4">
+        <h1 class="text-3xl font-bold tracking-tight text-white mb-2">Continuous-Time Chaotic RNN</h1>
+        <p class="text-sm text-slate-400">
+            Numerical integration of: <code class="bg-slate-800 px-1 py-0.5 rounded text-blue-300">τ(dx/dt) = -x + g * J * tanh(x) + u * z + W_in * A</code><br>
+            Observing thermodynamic chaos, FORCE Learning, and Multi-Task Context Switching (Sussillo & Abbott, 2009).
+        </p>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <!-- Controls Panel -->
+        <div class="col-span-1 bg-slate-800 p-5 rounded-lg border border-slate-700 flex flex-col gap-5">
+            <div>
+                <label for="gainSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Synaptic Gain ($g$): <span id="gainValue" class="text-blue-400 font-bold ml-1">1.50</span>
+                </label>
+                <input type="range" id="gainSlider" min="0.0" max="3.0" step="0.01" value="1.5" class="w-full cursor-pointer">
+                <p class="text-xs text-slate-500 mt-1">Controls the variance of recurrent weights. Must be > 1.0 for robust learning.</p>
+            </div>
+
+            <div>
+                <label for="nSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Network Size ($N$): <span id="nValue" class="text-blue-400 font-bold ml-1">300</span>
+                </label>
+                <input type="range" id="nSlider" min="50" max="1000" step="10" value="300" class="w-full cursor-pointer">
+                <p class="text-xs text-slate-500 mt-1">Slightly larger default $N$ provides enough dimensions to store multiple tasks.</p>
+            </div>
+
+            <div>
+                <label for="windowSlider" class="block text-sm font-medium text-slate-300 mb-1">
+                    Time Window: <span id="windowValue" class="text-blue-400 font-bold ml-1">1000</span> ms
+                </label>
+                <input type="range" id="windowSlider" min="100" max="3000" step="50" value="1000" class="w-full cursor-pointer">
+            </div>
+
+            <!-- FORCE Learning Controls -->
+            <div class="border-t border-slate-700 pt-4">
+                <h3 class="text-sm font-semibold text-white mb-3">FORCE Learning</h3>
+                
+                <button id="toggleTrainBtn" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded transition-colors shadow-sm mb-2">
+                    Start Training (RLS)
+                </button>
+                <button id="resetWeightsBtn" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-1.5 px-4 rounded transition-colors shadow-sm mb-2 text-sm">
+                    Reset Readout Weights
+                </button>
+                
+                <div class="bg-slate-900 p-3 rounded border border-slate-700 mt-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium text-slate-300">Input Context ($A$): <strong id="inputA_disp" class="text-blue-400 text-lg">0</strong></span>
+                        <button id="toggleInputBtn" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-1 px-3 rounded text-sm transition-colors shadow-sm">Toggle $A$</button>
+                    </div>
+                    <p class="text-xs text-slate-400 leading-tight">Target is <span class="text-white">2 Hz</span> when $A=0$, and <span class="text-white">20 Hz</span> when $A=1$. <br><br><strong>Training Tip:</strong> Start training and toggle $A$ multiple times until the network smoothly tracks both frequencies!</p>
+                </div>
+            </div>
+
+            <div class="border-t border-slate-700 pt-4">
+                <button id="perturbBtn" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-semibold py-1.5 px-4 rounded transition-colors shadow-sm mb-2 text-sm border border-slate-600">
+                    Inject Perturbation
+                </button>
+            </div>
+        </div>
+
+        <!-- Visualization Panel -->
+        <div class="col-span-1 md:col-span-3">
+            <div class="flex items-end mb-2 border-b border-slate-700">
+                <button id="tabTraces" class="px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors">Activity Traces & Readout</button>
+                <button id="tabSpectrum" class="px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors">Eigenvalue Spectrum</button>
+            </div>
+            <!-- Canvas container ensures relative sizing -->
+            <div class="w-full relative" style="height: 700px;">
+                <canvas id="rnnCanvas" class="w-full h-full"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables for Web Worker eigenvalue computation
+        let eigWorker = null;
+        let isComputingSpectrum = false;
+
+        function computeEigenvaluesAsync(J0_2d, rnnInstance) {
+            if (eigWorker) eigWorker.terminate();
+            isComputingSpectrum = true;
+            rnnInstance.eig0 = null;
+
+            const workerCode = `
+                importScripts('https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js');
+                self.onmessage = function(e) {
+                    try {
+                        const eig = numeric.eig(e.data);
+                        self.postMessage({ success: true, re: eig.lambda.x, im: eig.lambda.y });
+                    } catch(err) {
+                        self.postMessage({ success: false, error: err.toString() });
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            eigWorker = new Worker(URL.createObjectURL(blob));
+
+            eigWorker.onmessage = function(e) {
+                isComputingSpectrum = false;
+                if (e.data.success) rnnInstance.eig0 = { re: e.data.re, im: e.data.im };
+            };
+            eigWorker.postMessage(J0_2d);
+        }
+
+        /**
+         * Core Computational Model (Updated for Multi-Task FORCE Learning)
+         */
+        class ChaoticRNN {
+            constructor(N) {
+                this.N = N;
+                this.tau = 10.0;     
+                this.dt = 1.0;       
+                this.g = 1.5;        
+                this.eig0 = null;    
+                
+                // State variables
+                this.x = new Float64Array(N);
+                for (let i = 0; i < N; i++) this.x[i] = (Math.random() - 0.5) * 0.2;
+
+                // Structural Matrix J0
+                this.J0 = new Float64Array(N * N);
+                const std = 1.0 / Math.sqrt(N);
+                const J0_2d = Array.from({ length: N }, () => new Array(N));
+
+                for (let i = 0; i < N; i++) {
+                    for (let j = 0; j < N; j++) {
+                        const val = this.boxMullerRandom(0, std);
+                        this.J0[i * N + j] = val;
+                        J0_2d[i][j] = val;
+                    }
+                }
+                
+                // FORCE Learning vectors and matrices
+                this.w = new Float64Array(N); // Readout weights
+                this.u = new Float64Array(N); // Static feedback weights
+                this.w_in = new Float64Array(N); // Context Input weights (for A)
+
+                for (let i = 0; i < N; i++) {
+                    this.u[i] = (Math.random() - 0.5) * 2.0;
+                    this.w_in[i] = (Math.random() - 0.5) * 2.0; // Random dense projections for context
+                }
+                
+                this.P = Array.from({length: N}, () => new Float64Array(N));
+                this.resetLearning();
+
+                computeEigenvaluesAsync(J0_2d, this);
+            }
+
+            boxMullerRandom(mean, std) {
+                let u = 0, v = 0;
+                while (u === 0) u = Math.random();
+                while (v === 0) v = Math.random();
+                return mean + std * Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+            }
+
+            perturb() {
+                for (let i = 0; i < this.N; i++) this.x[i] += (Math.random() - 0.5) * 2.0; 
+            }
+
+            resetLearning() {
+                this.w.fill(0);
+                const alpha = 1.0; // Regularization parameter
+                for (let i = 0; i < this.N; i++) {
+                    this.P[i].fill(0);
+                    this.P[i][i] = 1.0 / alpha;
+                }
+            }
+
+            getRates() {
+                const r = new Float64Array(this.N);
+                for (let i = 0; i < this.N; i++) r[i] = Math.tanh(this.x[i]);
+                return r;
+            }
+
+            getReadout(r) {
+                let z = 0;
+                for (let i = 0; i < this.N; i++) z += this.w[i] * r[i];
+                return z;
+            }
+
+            // Recursive Least Squares (RLS) step
+            forceTrain(target, r) {
+                const k = new Float64Array(this.N);
+                let rPr = 0.0;
+
+                // k = P * r
+                for (let i = 0; i < this.N; i++) {
+                    let sum = 0;
+                    for (let j = 0; j < this.N; j++) {
+                        sum += this.P[i][j] * r[j];
+                    }
+                    k[i] = sum;
+                    rPr += r[i] * sum;
+                }
+
+                const c = 1.0 / (1.0 + rPr);
+
+                // Update P = P - c * k * k^T
+                for (let i = 0; i < this.N; i++) {
+                    for (let j = 0; j < this.N; j++) {
+                        this.P[i][j] -= c * k[i] * k[j];
+                    }
+                }
+
+                // Error e = w^T * r - target
+                let z = 0;
+                for (let i = 0; i < this.N; i++) z += this.w[i] * r[i];
+                const err = z - target;
+
+                // Update w = w - e * c * k
+                for (let i = 0; i < this.N; i++) {
+                    this.w[i] -= c * err * k[i];
+                }
+            }
+
+            // Forward Euler step incorporating context 'A' and feedback u*z
+            step(z, r, inputA) {
+                const nextX = new Float64Array(this.N);
+                
+                for (let i = 0; i < this.N; i++) {
+                    let recurrentInput = 0.0;
+                    const rowOffset = i * this.N;
+                    
+                    for (let j = 0; j < this.N; j++) {
+                        recurrentInput += this.J0[rowOffset + j] * r[j];
+                    }
+                    recurrentInput *= this.g;
+
+                    // The feedback term (tames chaos to match target)
+                    recurrentInput += this.u[i] * z;
+                    
+                    // The context input term (shifts operating point)
+                    recurrentInput += this.w_in[i] * inputA;
+
+                    const dx = -this.x[i] + recurrentInput;
+                    nextX[i] = this.x[i] + (this.dt / this.tau) * dx;
+                }
+                
+                this.x = nextX;
+            }
+        }
+
+        /**
+         * UI and Visualization Logic
+         */
+        let N_NEURONS = 300;
+        const N_PLOT = 6; 
+        const STEPS_PER_FRAME = 6;
+        let timeWindow = 1000;
+
+        let rnn = new ChaoticRNN(N_NEURONS);
+        let isTraining = false;
+        
+        // Target tracking variables
+        let currentInputA = 0;
+        let targetPhase = 0;
+        
+        const canvas = document.getElementById('rnnCanvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        
+        function resizeCanvas() {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const history = Array.from({ length: N_PLOT }, () => []);
+        const historyZ = [];
+        const historyTarget = [];
+        const historyA = []; // To visualize context changes
+        
+        const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
+
+        // UI Binding
+        const gainSlider = document.getElementById('gainSlider');
+        const gainValueDisp = document.getElementById('gainValue');
+        const perturbBtn = document.getElementById('perturbBtn');
+        const nSlider = document.getElementById('nSlider');
+        const nValueDisp = document.getElementById('nValue');
+        const windowSlider = document.getElementById('windowSlider');
+        const windowValueDisp = document.getElementById('windowValue');
+        const toggleTrainBtn = document.getElementById('toggleTrainBtn');
+        const resetWeightsBtn = document.getElementById('resetWeightsBtn');
+        const toggleInputBtn = document.getElementById('toggleInputBtn');
+        const inputADisp = document.getElementById('inputA_disp');
+
+        let currentTab = 'traces';
+        const tabTraces = document.getElementById('tabTraces');
+        const tabSpectrum = document.getElementById('tabSpectrum');
+
+        function switchTab(tab) {
+            currentTab = tab;
+            if (tab === 'traces') {
+                tabTraces.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors";
+                tabSpectrum.className = "px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors";
+            } else {
+                tabSpectrum.className = "px-4 py-2 text-blue-400 border-b-2 border-blue-400 font-semibold transition-colors";
+                tabTraces.className = "px-4 py-2 text-slate-400 hover:text-slate-200 font-semibold transition-colors";
+            }
+        }
+
+        tabTraces.addEventListener('click', () => switchTab('traces'));
+        tabSpectrum.addEventListener('click', () => switchTab('spectrum'));
+
+        gainSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            rnn.g = val;
+            gainValueDisp.textContent = val.toFixed(2);
+        });
+
+        nSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            N_NEURONS = val;
+            nValueDisp.textContent = val;
+            
+            const currentG = rnn.g;
+            rnn = new ChaoticRNN(N_NEURONS);
+            rnn.g = currentG;
+            if(isTraining) toggleTraining(); 
+            
+            for (let i = 0; i < N_PLOT; i++) history[i] = [];
+            historyZ.length = 0;
+            historyTarget.length = 0;
+            historyA.length = 0;
+        });
+
+        windowSlider.addEventListener('input', (e) => {
+            const val = parseInt(e.target.value);
+            timeWindow = val;
+            windowValueDisp.textContent = val;
+        });
+
+        perturbBtn.addEventListener('click', () => rnn.perturb());
+
+        resetWeightsBtn.addEventListener('click', () => {
+            rnn.resetLearning();
+            if(isTraining) toggleTraining();
+        });
+
+        toggleInputBtn.addEventListener('click', () => {
+            currentInputA = currentInputA === 0 ? 1 : 0;
+            inputADisp.textContent = currentInputA;
+        });
+
+        function toggleTraining() {
+            isTraining = !isTraining;
+            if (isTraining) {
+                toggleTrainBtn.textContent = "Stop Training (Autonomous)";
+                toggleTrainBtn.className = "w-full bg-red-600 hover:bg-red-500 text-white font-semibold py-2 px-4 rounded transition-colors shadow-sm mb-2";
+            } else {
+                toggleTrainBtn.textContent = "Start Training (RLS)";
+                toggleTrainBtn.className = "w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded transition-colors shadow-sm mb-2";
+            }
+        }
+        toggleTrainBtn.addEventListener('click', toggleTraining);
+
+        // Main Animation Loop
+        function animate() {
+            for (let s = 0; s < STEPS_PER_FRAME; s++) {
+                
+                // Continuous phase integration to prevent discontinuities when changing frequency
+                const freq = currentInputA === 0 ? 2.0 : 20.0;
+                targetPhase += 2 * Math.PI * (freq / 1000.0) * rnn.dt;
+                const target = Math.sin(targetPhase);
+                
+                const r = rnn.getRates();
+                let z = rnn.getReadout(r);
+                
+                if (isTraining) {
+                    rnn.forceTrain(target, r);
+                    z = rnn.getReadout(r); 
+                }
+
+                rnn.step(z, r, currentInputA);
+                
+                // Record history
+                for(let i=0; i<N_PLOT; i++) {
+                    history[i].push(r[i]);
+                    if (history[i].length > 3000) history[i].shift();
+                }
+                historyZ.push(z);
+                historyTarget.push(target);
+                historyA.push(currentInputA);
+                if (historyZ.length > 3000) {
+                    historyZ.shift();
+                    historyTarget.shift();
+                    historyA.shift();
+                }
+            }
+
+            // Rendering
+            ctx.fillStyle = '#1e293b'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (currentTab === 'traces') {
+                const totalTracks = N_PLOT + 2; 
+                const trackHeight = canvas.height / totalTracks;
+                const amplitudeY = trackHeight * 0.38; 
+
+                // Plot individual neurons
+                for (let i = 0; i < N_PLOT; i++) {
+                    const midY = (i + 0.5) * trackHeight;
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#475569'; 
+                    ctx.lineWidth = 1;
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(0, midY);
+                    ctx.lineTo(canvas.width, midY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#334155'; 
+                    ctx.lineWidth = 1;
+                    ctx.moveTo(0, (i + 1) * trackHeight);
+                    ctx.lineTo(canvas.width, (i + 1) * trackHeight);
+                    ctx.stroke();
+
+                    const trace = history[i];
+                    if (trace.length < 2) continue;
+
+                    ctx.beginPath();
+                    ctx.strokeStyle = colors[i];
+                    ctx.lineWidth = 2;
+                    
+                    let started = false;
+                    const L = trace.length;
+                    const stepPixels = canvas.width / timeWindow;
+
+                    for (let t = 0; t < L; t++) {
+                        const distFromEnd = (L - 1) - t;
+                        if (distFromEnd > timeWindow) continue;
+                        const x = canvas.width - (distFromEnd * stepPixels);
+                        const y = midY - (trace[t] * amplitudeY);
+                        
+                        if (!started) { ctx.moveTo(x, y); started = true; } 
+                        else { ctx.lineTo(x, y); }
+                    }
+                    ctx.stroke();
+                }
+
+                // Plot Readout vs Target at the bottom
+                const readoutMidY = (N_PLOT + 1) * trackHeight;
+                const readoutAmpY = trackHeight * 0.8; 
+
+                // Readout background and axis
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, N_PLOT * trackHeight, canvas.width, 2 * trackHeight);
+                ctx.beginPath();
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
+                ctx.moveTo(0, readoutMidY);
+                ctx.lineTo(canvas.width, readoutMidY);
+                ctx.stroke();
+
+                ctx.fillStyle = '#e2e8f0';
+                ctx.font = '12px font-semibold sans-serif';
+                ctx.fillText('Network Output z(t) vs Target f(t)', 10, N_PLOT * trackHeight + 20);
+
+                if (historyZ.length >= 2) {
+                    const L = historyZ.length;
+                    const stepPixels = canvas.width / timeWindow;
+
+                    // Plot Context A overlay (Light blue shaded region for A=1)
+                    ctx.fillStyle = 'rgba(59, 130, 246, 0.1)'; // Blue wash for context 1
+                    for (let t = 0; t < L - 1; t++) {
+                        const distFromEnd = (L - 1) - t;
+                        if (distFromEnd > timeWindow) continue;
+                        if (historyA[t] === 1) {
+                            const x1 = canvas.width - (distFromEnd * stepPixels);
+                            const x2 = canvas.width - ((distFromEnd - 1) * stepPixels);
+                            ctx.fillRect(x1, N_PLOT * trackHeight, x2 - x1 + 1, 2 * trackHeight);
+                        }
+                    }
+
+                    // Plot Target (Dashed White)
+                    ctx.beginPath();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([8, 8]);
+                    let started = false;
+                    for (let t = 0; t < L; t++) {
+                        const distFromEnd = (L - 1) - t;
+                        if (distFromEnd > timeWindow) continue;
+                        const x = canvas.width - (distFromEnd * stepPixels);
+                        const y = readoutMidY - (historyTarget[t] * readoutAmpY);
+                        if (!started) { ctx.moveTo(x, y); started = true; } 
+                        else { ctx.lineTo(x, y); }
+                    }
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Plot Actual z(t) (Solid Red)
+                    ctx.beginPath();
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    started = false;
+                    for (let t = 0; t < L; t++) {
+                        const distFromEnd = (L - 1) - t;
+                        if (distFromEnd > timeWindow) continue;
+                        const x = canvas.width - (distFromEnd * stepPixels);
+                        const y = readoutMidY - (historyZ[t] * readoutAmpY);
+                        if (!started) { ctx.moveTo(x, y); started = true; } 
+                        else { ctx.lineTo(x, y); }
+                    }
+                    ctx.stroke();
+                }
+
+            } else if (currentTab === 'spectrum') {
+                const scale = canvas.height / 6; 
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+
+                ctx.strokeStyle = '#475569';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, centerY); ctx.lineTo(canvas.width, centerY); 
+                ctx.moveTo(centerX, 0); ctx.lineTo(centerX, canvas.height); 
+                ctx.stroke();
+
+                const re1X = centerX + scale * 1.0;
+                ctx.strokeStyle = '#ef4444'; 
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                ctx.moveTo(re1X, 0);
+                ctx.lineTo(re1X, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                ctx.fillStyle = '#ef4444';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Re(λ) = 1 (Instability Threshold)', re1X + 10, 20);
+
+                ctx.strokeStyle = '#3b82f6'; 
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, rnn.g * scale, 0, 2 * Math.PI);
+                ctx.stroke();
+
+                if (isComputingSpectrum) {
+                    ctx.fillStyle = '#f59e0b'; 
+                    ctx.font = '14px sans-serif';
+                    ctx.fillText('Computing O(N³) spectrum in background thread...', centerX - 140, centerY - 20);
+                } else if (rnn.eig0 && rnn.eig0.re) {
+                    ctx.fillStyle = '#94a3b8'; 
+                    for (let i = 0; i < rnn.N; i++) {
+                        const re = rnn.g * rnn.eig0.re[i];
+                        const im = rnn.eig0.im ? rnn.g * rnn.eig0.im[i] : 0;
+                        ctx.beginPath();
+                        ctx.arc(centerX + re * scale, centerY - im * scale, 2.5, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.fillStyle = '#ef4444';
+                    ctx.font = '14px sans-serif';
+                    ctx.fillText('Eigenvalue spectrum unavailable.', centerX - 100, centerY - 20);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+    </script>
+</body>
+</html>

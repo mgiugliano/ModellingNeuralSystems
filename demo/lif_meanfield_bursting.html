@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIF Network — Mean-Field vs. Microscopic / Intraburst Gamma</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+:root{
+  --bg:#15171c;--bg2:#1c1f26;--panel:#0c0e12;--bezel:#2a2e38;
+  --screen:#05080a;--grid:#0c2219;
+  --pe:#5dff9e;--pi:#ffb454;--cyan:#46d6ff;--hot:#ff5d6c;--acc:#ffd23f;
+  --ink:#cdd6d2;--dim:#76837c;--line:#252930;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:'IBM Plex Mono',monospace;font-size:12.5px;padding:16px;
+  background-image:radial-gradient(1100px 500px at 65% -5%,#1e2229 0,transparent 60%)}
+.wrap{max-width:1520px;margin:0 auto}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;
+  border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
+h1{font-family:'Saira Semi Condensed',sans-serif;font-weight:700;font-size:28px;
+  text-transform:uppercase;letter-spacing:.4px;line-height:.9}
+h1 b{color:var(--pe)} .sub{color:var(--dim);font-size:11.5px;margin-top:5px;line-height:1.5;max-width:660px}
+.badge{font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:3px;
+  font-size:10.5px;color:var(--acc);border:1px solid var(--bezel);padding:5px 11px;border-radius:2px;
+  background:linear-gradient(180deg,#1d2027,#111419);white-space:nowrap}
+.layout{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}
+.col{display:flex;flex-direction:column;gap:12px}
+.inst{background:linear-gradient(180deg,var(--bg2),var(--bg));border:1px solid var(--bezel);
+  border-radius:7px;padding:11px;box-shadow:0 1px 0 #3a404c inset,0 12px 28px -16px #000}
+.lbl{display:flex;justify-content:space-between;align-items:center;
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:2px;
+  font-size:10.5px;color:var(--dim);margin-bottom:7px}
+.lbl .tag{color:var(--pe)} .lbl .r{font-size:10px;letter-spacing:1px}
+.sf{background:var(--screen);border-radius:5px;border:1px solid #000;
+  box-shadow:0 0 0 2px #1b1e25,0 0 22px -5px #000 inset;position:relative;overflow:hidden}
+.sf::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.15) 3px),
+             radial-gradient(120% 120% at 50% 50%,transparent 58%,rgba(0,0,0,.52) 100%)}
+canvas{display:block;width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.chip{background:#09090d;border:1px solid var(--line);border-radius:3px;padding:5px 8px;min-width:80px}
+.chip .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--dim)}
+.chip .v{font-size:14.5px;font-weight:600}
+.ve{color:var(--pe)}.vi{color:var(--pi)}.vc{color:var(--cyan)}.vw{color:var(--acc)}
+.ctl{background:linear-gradient(180deg,var(--bg2),var(--bg));border:1px solid var(--bezel);
+  border-radius:7px;padding:13px 15px;box-shadow:0 1px 0 #3a404c inset}
+.ch{font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:2px;
+  font-size:10.5px;color:var(--dim);margin:2px 0 9px;display:flex;justify-content:space-between;align-items:center}
+.btns{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:5px}
+button{font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.2px;
+  font-size:11.5px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,#23272f,#171a20);border:1px solid var(--bezel);
+  border-radius:3px;padding:7px 12px;cursor:pointer;transition:all .12s}
+button:hover{border-color:var(--pe);color:#fff}
+button:active{transform:translateY(1px)}
+.bp{background:linear-gradient(180deg,#1d3b2c,#0f241a);border-color:#2e6a4c;color:var(--pe)}
+.bp:hover{box-shadow:0 0 12px -3px var(--pe)}
+.bh{background:linear-gradient(180deg,#3b1d22,#240f13);border-color:#6a2e36;color:var(--hot)}
+.bh:hover{box-shadow:0 0 12px -3px var(--hot)}
+.bpre{font-size:10.5px;padding:6px 10px}
+.bpre.on{border-color:var(--acc);color:var(--acc)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:5px 18px}
+.sl{padding:4px 0}
+.sl label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px}
+.sl label .n{color:var(--dim)}.sl label .va{color:var(--pe);font-weight:600}
+.sl input[type=range]{-webkit-appearance:none;width:100%;height:3px;border-radius:3px;
+  background:var(--line);outline:none}
+.sl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;
+  border-radius:50%;background:var(--pe);cursor:pointer;border:2px solid #0c0e12;
+  box-shadow:0 0 7px -1px var(--pe)}
+.sl input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;
+  background:var(--pe);cursor:pointer;border:2px solid #0c0e12}
+.div{height:1px;background:var(--line);margin:10px 0 8px}
+.sec{font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;
+  font-size:10px;color:var(--acc);margin:3px 0 3px;opacity:.8}
+.note{font-size:11px;color:var(--dim);line-height:1.55;margin-top:4px}
+.leg{display:flex;gap:14px;font-size:10px;color:var(--dim);margin-top:6px;flex-wrap:wrap}
+.leg span{display:inline-flex;align-items:center;gap:4px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pill{font-family:'Saira Semi Condensed',sans-serif;letter-spacing:2px;font-size:11.5px;
+  padding:3px 9px;border-radius:3px;border:1px solid var(--line)}
+.pill.up{color:var(--pe);border-color:#2e6a4c}.pill.dn{color:var(--pi);border-color:#6a4a2e}
+.foot{margin-top:16px;color:var(--dim);font-size:11px;line-height:1.55;
+  border-top:1px solid var(--line);padding-top:11px}
+.foot code{color:var(--pe);background:#09090d;padding:1px 5px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>Up/Down States &nbsp;·&nbsp; <b>Mean-Field</b> meets the <b>Spikes</b><br>
+        &amp; Intraburst <b>Gamma Oscillations</b></h1>
+    <div class="sub">500-neuron sparse LIF network (E/I) with spike-frequency adaptation and STD. Left bench: oscilloscope + spectrogram showing the intraburst gamma chirp. Right bench: live Ricciardi self-consistency — where the attractor lives and when fatigue kills it.</div>
+  </div>
+  <div class="badge">LIF · Ricciardi · PING gamma · Brunel regime</div>
+</header>
+
+<div class="layout">
+<!-- LEFT: scopes -->
+<div class="col">
+  <div class="inst">
+    <div class="lbl"><span><span class="tag">CH1</span> &nbsp;RASTER — spike times × neuron</span><span class="r">E top · I bottom</span></div>
+    <div class="sf"><canvas id="raster" width="720" height="200"></canvas></div>
+  </div>
+
+  <div class="inst">
+    <div class="lbl"><span><span class="tag">CH2</span> &nbsp;POPULATION RATE ν(t)</span><span class="r">solid=micro · dashed=MF fixed pts</span></div>
+    <div class="sf"><canvas id="rate" width="720" height="150"></canvas></div>
+  </div>
+
+  <div class="inst">
+    <div class="lbl"><span><span class="tag">CH3</span> &nbsp;BURST-AVERAGED POWER SPECTRUM — ν_E epochs aligned to up-state onset, averaged</span><span class="r" id="gfreq">N=0 bursts</span></div>
+    <div class="sf"><canvas id="spec" width="720" height="160"></canvas></div>
+    <div class="leg">
+      <span><span class="dot" style="background:#5dff9e"></span>mean PSD (N bursts)</span>
+      <span><span class="dot" style="background:rgba(93,255,158,.2)"></span>individual burst spectra (dim)</span>
+      <span><span class="dot" style="background:var(--acc)"></span>peak frequency</span>
+      <span style="color:var(--dim);font-size:10px">gamma band 30–140 Hz shaded · chirp broadens the peak</span>
+    </div>
+  </div>
+
+  <div class="inst">
+    <div class="lbl"><span><span class="tag">CH4</span> &nbsp;MEMBRANE Vₘ(t) — sample E neuron</span><span class="r" id="vmid">#—</span></div>
+    <div class="sf"><canvas id="vm" width="720" height="110"></canvas></div>
+    <div class="chips">
+      <div class="chip"><span class="k">ν_E micro</span><span class="v ve" id="rdE">0.0</span></div>
+      <div class="chip"><span class="k">ν_I micro</span><span class="v vi" id="rdI">0.0</span></div>
+      <div class="chip"><span class="k">MF fixed pts</span><span class="v vc" id="rdMF">—</span></div>
+      <div class="chip"><span class="k">gamma ƒ</span><span class="v vw" id="rdG">—</span></div>
+      <div class="chip"><span class="k">adapt w̄</span><span class="v vw" id="rdW">0.00</span></div>
+      <div class="chip"><span class="k">state</span><span class="v" id="rdSt">DOWN</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT: self-consistency + controls -->
+<div class="col">
+  <div class="inst">
+    <div class="lbl"><span><span class="tag">SC</span> &nbsp;SELF-CONSISTENCY &nbsp; ν_out = Φ(ν_in)</span><span class="r" id="fprd">—</span></div>
+    <div class="sf"><canvas id="sc" width="560" height="400"></canvas></div>
+    <div class="leg">
+      <span><span class="dot" style="background:var(--pe)"></span>Φ_E (current w̄)</span>
+      <span><span class="dot" style="background:var(--cyan)"></span>diagonal</span>
+      <span><span class="dot" style="background:#fff"></span>stable FP</span>
+      <span><span class="dot" style="background:transparent;border:1px solid var(--hot)"></span>saddle</span>
+      <span><span class="dot" style="background:var(--acc)"></span>network ν_E</span>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="ch"><span>Transport</span><span class="pill dn" id="pill">— IDLE —</span></div>
+    <div class="btns">
+      <button class="bp" id="run">▶ Run</button>
+      <button id="ignite">⚡ Ignite</button>
+      <button id="ff">⏩ Fast-forward</button>
+      <button class="bh" id="reset">⟲ Reset</button>
+    </div>
+    <div class="sec">Presets</div>
+    <div class="btns">
+      <button class="bpre" data-p="bistable">Bistable</button>
+      <button class="bpre" data-p="transient">Transient up</button>
+      <button class="bpre" data-p="gamma">Slow Osc + γ chirp</button>
+      <button class="bpre" data-p="slowosc">Slow oscillations</button>
+      <button class="bpre" data-p="async">Down only</button>
+    </div>
+    <div class="div"></div>
+    <div class="sec">Drive &amp; noise</div>
+    <div class="g2" id="drv"></div>
+    <div class="sec" style="margin-top:9px">Recurrent gains g = C·J (mV)</div>
+    <div class="g2" id="gns"></div>
+    <div class="sec" style="margin-top:9px">Fatigue — adaptation &amp; depression</div>
+    <div class="g2" id="fat"></div>
+    <div class="sec" style="margin-top:9px">Network structure</div>
+    <div class="g2" id="net"></div>
+    <div class="note" id="hint">Press <b>Run</b> then <b>Ignite</b> to explore bistability and gamma oscillations.</div>
+  </div>
+</div>
+</div>
+
+<div class="foot">
+<b>Model.</b> Each LIF neuron obeys <code>τ_m dV/dt = −(V−E_L) + RI(t)</code>, V_θ=20, V_r=10, t_rp=2ms, τ_m=20ms. Sparse random in-degrees (C_E=80, C_I=55) maintain the asynchronous-irregular regime. Recurrent excitation is slow (NMDA-like, τ_SE) for up-state stability; fast (F component) for E–I gamma resonance (PING). Inhibition is instantaneous delta — each I spike delivers a step suppression that resets E-neuron timing coherently. External input is OU noise with σ/√2 amplitude so stationary membrane variance matches the σ²/2 assumed by the Ricciardi transfer function. <b>Intraburst gamma</b>: when the network enters the up-state, the E–I feedback loop resonates (period ≈ 2δ + I-suppression time ≈ 15–30ms → 35–65Hz). Spike-frequency adaptation and STD reduce the effective excitatory drive over time, lengthening the period and producing a <b>downward frequency chirp</b> visible in the spectrogram (CH3). The mean-field self-consistency (right panel) captures the time-averaged rate but not the oscillatory fine structure — demonstrating what the 1-D fixed-point description can and cannot predict.
+</div>
+</div>
+
+<script>
+"use strict";
+/* =================================================================
+   RICCIARDI TRANSFER FUNCTION (erfcx-based, 16-node Gauss-Legendre)
+================================================================= */
+function erfcx(z){
+  const ax=Math.abs(z);
+  const t=1/(1+.5*ax);
+  const tau=t*Math.exp(-1.26551223+t*(1.00002368+t*(.37409196+t*(.09678418+
+        t*(-.18628806+t*(.27886807+t*(-1.13520398+t*(1.48851587+
+        t*(-.82215223+t*.17087277)))))))));
+  return z>=0?tau:2*Math.exp(z*z)-tau;
+}
+const GLx=[-0.9894009349916499,-0.9445750230732326,-0.8656312023878318,-0.755404408355003,
+-0.6178762444026438,-0.45801677765722737,-0.2816035507792589,-0.09501250983763744,
+0.09501250983763744,0.2816035507792589,0.45801677765722737,0.6178762444026438,
+0.755404408355003,0.8656312023878318,0.9445750230732326,0.9894009349916499];
+const GLw=[0.027152459411754037,0.062253523938647894,0.09515851168249279,0.12462897125553388,
+0.14959598881657674,0.16915651939500254,0.18260341504492358,0.1894506104550685,
+0.1894506104550685,0.18260341504492358,0.16915651939500254,0.14959598881657674,
+0.12462897125553388,0.09515851168249279,0.062253523938647894,0.027152459411754037];
+const P={tau_m:20,trp:2,Vth:20,Vr:10};
+function Phi(mu,sig){
+  if(sig<1e-6)sig=1e-6;
+  let yt=Math.min((P.Vth-mu)/sig,8),yr=Math.min((P.Vr-mu)/sig,8);
+  if(yr>=yt)return 1000/P.trp;
+  const hw=.5*(yt-yr),mid=.5*(yt+yr);
+  let s=0; for(let i=0;i<16;i++){const u=hw*GLx[i]+mid;s+=GLw[i]*erfcx(-u);}
+  return 1000/(P.trp+P.tau_m*Math.sqrt(Math.PI)*hw*s);
+}
+function muSigE(nE,nI,S,w,R){
+  const gEE=S.gEE*R;
+  const m=S.muE+P.tau_m*(gEE*nE-S.gEI*nI)/1000-w;
+  const v=S.sigE*S.sigE+P.tau_m*((gEE*gEE)/S.CE*nE+(S.gEI*S.gEI)/S.CI*nI)/1000;
+  return[m,Math.sqrt(Math.max(v,1e-8))];
+}
+function muSigI(nE,nI,S,R){
+  const gIE=S.gIE*R;
+  const m=S.muI+P.tau_m*(gIE*nE-S.gII*nI)/1000;
+  const v=S.sigI*S.sigI+P.tau_m*((gIE*gIE)/S.CE*nE+(S.gII*S.gII)/S.CI*nI)/1000;
+  return[m,Math.sqrt(Math.max(v,1e-8))];
+}
+function solveI(nE,S,R){
+  let nI=5;
+  for(let k=0;k<60;k++){const[m,s]=muSigI(nE,nI,S,R);nI=.5*nI+.5*Phi(m,s);}
+  return nI;
+}
+function Eout(nE,S,w,R){
+  const nI=solveI(nE,S,R);
+  const[m,s]=muSigE(nE,nI,S,w,R);
+  return[Phi(m,s),nI];
+}
+function selfConsistency(S,w,R){
+  const N=160,gx=new Float64Array(N),gy=new Float64Array(N);
+  for(let i=0;i<N;i++){const nu=.05+i*169.95/(N-1);gx[i]=nu;gy[i]=Eout(nu,S,w,R)[0];}
+  const fps=[];
+  for(let i=0;i<N-1;i++){
+    const d0=gy[i]-gx[i],d1=gy[i+1]-gx[i+1];
+    if(d0===0||d0*d1<0){
+      const x=d0===0?gx[i]:gx[i]-d0*(gx[i+1]-gx[i])/(d1-d0);
+      fps.push({nu:x,stable:(gy[i+1]-gy[i])/(gx[i+1]-gx[i])<1});
+    }
+  }
+  return{gx,gy,fps};
+}
+
+/* =================================================================
+   FAST FFT (radix-2 Cooley-Tukey) for spectrogram
+================================================================= */
+function fft(x){
+  const n=x.length,bits=Math.log2(n)|0;
+  const rev=new Int32Array(n);
+  for(let i=0;i<n;i++){let r=0,b=i;for(let j=0;j<bits;j++){r=(r<<1)|(b&1);b>>=1;}rev[i]=r;}
+  const re=new Float64Array(n),im=new Float64Array(n);
+  for(let i=0;i<n;i++){re[rev[i]]=x[i];}
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wr=Math.cos(ang),wi=Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cr=1,ci=0;
+      for(let j=0;j<len>>1;j++){
+        const ur=re[i+j],ui=im[i+j];
+        const vr=re[i+j+(len>>1)]*cr-im[i+j+(len>>1)]*ci;
+        const vi=re[i+j+(len>>1)]*ci+im[i+j+(len>>1)]*cr;
+        re[i+j]=ur+vr;im[i+j]=ui+vi;re[i+j+(len>>1)]=ur-vr;im[i+j+(len>>1)]=ui-vi;
+        const t=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=t;
+      }
+    }
+  }
+  const pwr=new Float64Array(n>>1);
+  for(let i=0;i<n>>1;i++)pwr[i]=re[i]*re[i]+im[i]*im[i];
+  return pwr;
+}
+
+/* =================================================================
+   MICROSCOPIC LIF SIMULATION
+================================================================= */
+let net=null;
+function gaussian(){
+  let u=0,v=0;while(u===0)u=Math.random();while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function buildNet(S){
+  const NE=S.NE,NI=S.NI,CE=S.CE,CI=S.CI;
+  function csr(nPre,nPost,C){
+    const out=Array.from({length:nPre},()=>[]);
+    for(let p=0;p<nPost;p++){
+      const ch=new Set();while(ch.size<C)ch.add((Math.random()*nPre)|0);
+      ch.forEach(pre=>out[pre].push(p));
+    }
+    const ptr=new Int32Array(nPre+1);
+    for(let i=0;i<nPre;i++)ptr[i+1]=ptr[i]+out[i].length;
+    const idx=new Int32Array(ptr[nPre]);
+    let c=0;for(let i=0;i<nPre;i++)for(const t of out[i])idx[c++]=t;
+    return{ptr,idx};
+  }
+  const EE=csr(NE,NE,CE),EI=csr(NE,NI,CE),IE=csr(NI,NE,CI),II=csr(NI,NI,CI);
+  const dt=0.1,dmin=S.dmin||0.3,dmax=S.dmax||2.8;
+  const D=Math.round(dmax/dt)+2;
+  const delE=new Int32Array(NE),delI=new Int32Array(NI);
+  for(let i=0;i<NE;i++)delE[i]=Math.round((dmin+Math.random()*(dmax-dmin))/dt);
+  for(let i=0;i<NI;i++)delI[i]=Math.round((dmin+Math.random()*(dmax-dmin))/dt);
+  const VE=new Float64Array(NE),VI=new Float64Array(NI);
+  for(let i=0;i<NE;i++)VE[i]=P.Vr+Math.random()*(P.Vth-P.Vr);
+  for(let i=0;i<NI;i++)VI[i]=P.Vr+Math.random()*(P.Vth-P.Vr);
+  net={S,dt,D,EE,EI,IE,II,delE,delI,VE,VI,
+    wE:new Float64Array(NE),RE:new Float64Array(NE).fill(1),
+    refE:new Float64Array(NE),refI:new Float64Array(NI),
+    gEexc:new Float64Array(NE),gIexc:new Float64Array(NI),
+    addEexc:Array.from({length:D},()=>new Float64Array(NE)),
+    addIexc:Array.from({length:D},()=>new Float64Array(NI)),
+    subE:Array.from({length:D},()=>new Float64Array(NE)),
+    subI:Array.from({length:D},()=>new Float64Array(NI)),
+    step:0,sampleE:(Math.random()*NE)|0,
+    kickUntil:0,kickAmp:0,
+    spkE:0,spkI:0,Vsample:P.Vr,wbar:0,Rbar:1};
+}
+function stepNet(){
+  const n=net,S=n.S,dt=n.dt,D=n.D;
+  const NE=S.NE,NI=S.NI;
+  const tau=P.tau_m,ea=Math.exp(-dt/tau),sq=Math.sqrt(1-ea*ea);
+  const sE=S.sigE/Math.SQRT2,sI=S.sigI/Math.SQRT2;
+  const JEE=S.gEE/S.CE,JEI=S.gEI/S.CI,JIE=S.gIE/S.CE,JII=S.gII/S.CI;
+  const easE=Math.exp(-dt/S.tauSE),tfac=tau/S.tauSE;
+  const useSTD=S.U>0,decW=Math.exp(-dt/S.tauw);
+  const cur=n.step%D;
+  const VE=n.VE,VI=n.VI,wE=n.wE,RE=n.RE,refE=n.refE,refI=n.refI;
+  const gEexc=n.gEexc,gIexc=n.gIexc;
+  const aEe=n.addEexc[cur],aIe=n.addIexc[cur],sbE=n.subE[cur],sbI=n.subI[cur];
+  for(let i=0;i<NE;i++){gEexc[i]=gEexc[i]*easE+aEe[i];aEe[i]=0;VE[i]+=sbE[i];sbE[i]=0;VE[i]+=gEexc[i]*dt/tau;}
+  for(let i=0;i<NI;i++){gIexc[i]=gIexc[i]*easE+aIe[i];aIe[i]=0;VI[i]+=sbI[i];sbI[i]=0;VI[i]+=gIexc[i]*dt/tau;}
+  const t=n.step*dt,kick=(t<n.kickUntil)?n.kickAmp:0;
+  for(let i=0;i<NE;i++){
+    const tgt=S.muE+kick-wE[i];
+    VE[i]=tgt+(VE[i]-tgt)*ea+sE*sq*gaussian();
+    if(refE[i]>0){VE[i]=P.Vr;refE[i]-=dt;if(refE[i]<0)refE[i]=0;}
+    wE[i]*=decW;
+    if(useSTD)RE[i]=1-(1-RE[i])*Math.exp(-dt/S.taurec);
+  }
+  for(let i=0;i<NI;i++){
+    VI[i]=S.muI+(VI[i]-S.muI)*ea+sI*sq*gaussian();
+    if(refI[i]>0){VI[i]=P.Vr;refI[i]-=dt;if(refI[i]<0)refI[i]=0;}
+  }
+  const fE=[],fI=[];
+  for(let i=0;i<NE;i++){
+    if(VE[i]>=P.Vth&&refE[i]<=0){
+      VE[i]=P.Vr;refE[i]=P.trp;wE[i]+=S.b;fE.push(i);
+      const tg=(cur+n.delE[i])%D,eff=(useSTD?RE[i]:1)*tfac;
+      const aE=n.addEexc[tg],aI=n.addIexc[tg];
+      let p0=n.EE.ptr[i],p1=n.EE.ptr[i+1];for(let p=p0;p<p1;p++)aE[n.EE.idx[p]]+=JEE*eff;
+      p0=n.EI.ptr[i];p1=n.EI.ptr[i+1];for(let p=p0;p<p1;p++)aI[n.EI.idx[p]]+=JIE*eff;
+      if(useSTD)RE[i]*=(1-S.U);
+    }
+  }
+  for(let i=0;i<NI;i++){
+    if(VI[i]>=P.Vth&&refI[i]<=0){
+      VI[i]=P.Vr;refI[i]=P.trp;fI.push(i);
+      const tg=(cur+n.delI[i])%D;
+      const sE2=n.subE[tg],sI2=n.subI[tg];
+      let p0=n.IE.ptr[i],p1=n.IE.ptr[i+1];for(let p=p0;p<p1;p++)sE2[n.IE.idx[p]]-=JEI;
+      p0=n.II.ptr[i];p1=n.II.ptr[i+1];for(let p=p0;p<p1;p++)sI2[n.II.idx[p]]-=JII;
+    }
+  }
+  n.Vsample=(refE[n.sampleE]>0)?P.Vr:VE[n.sampleE];
+  n.spkE+=fE.length;n.spkI+=fI.length;
+  let sw=0;for(let i=0;i<NE;i++)sw+=wE[i];n.wbar=sw/NE;
+  if(useSTD){let sr=0;for(let i=0;i<NE;i++)sr+=RE[i];n.Rbar=sr/NE;}else n.Rbar=1;
+  n.lastE=fE;n.lastI=fI;n.step++;
+}
+
+/* =================================================================
+   HISTORY BUFFERS
+================================================================= */
+const WIN_MS=1200;
+const rasterDots=[];
+const rateHist=[];
+const vmHist=[];
+const rate1ms=new Float64Array(8192);  // circular, 1ms bins
+let r1ms_ptr=0,r1ms_accE=0,r1ms_steps=0;
+
+// ---- Burst-averaged power spectrum ----
+const PSD_N    = 512;             // FFT length = 512 ms window at 1 kHz
+const PSD_BINS = PSD_N >> 1;      // 256 bins, 0–500 Hz
+const PSD_FMAX = 180;             // Hz display ceiling
+const PSD_BMAX = Math.round(PSD_FMAX / (1000/PSD_N)); // ~92 bins to display
+const PSD_SKIP = 50;              // ms after onset to skip (avoid onset transient)
+
+const psdAccum  = new Float64Array(PSD_BINS); // cumulative sum across bursts
+const psdHist   = [];             // last 8 individual spectra (for dim overlay)
+let btCount=0,btAbove=false,btLastOnset=-9999;
+const btPending=[];
+const BT_THRESH_UP=12, BT_THRESH_DN=5, BT_REFRAC=600;
+let lastRate={e:0,i:0},simMs=0,frameCount=0;
+
+function pushHistory(){
+  const n=net;
+  if(!ffMode){
+    for(const i of n.lastE)if(Math.random()<0.5)rasterDots.push({t:simMs,idx:i,exc:1});
+    for(const i of n.lastI)if(Math.random()<0.5)rasterDots.push({t:simMs,idx:i,exc:0});
+    vmHist.push({t:simMs,v:n.Vsample});
+  }
+  // 1ms rate accumulation
+  r1ms_accE+=n.lastE.length;r1ms_steps++;
+  if(r1ms_steps>=10){  // flush every 1ms (10 steps @ dt=0.1)
+    const rms=r1ms_accE/net.S.NE/1.0*1000;  // Hz
+    rate1ms[r1ms_ptr%8192]=rms;r1ms_ptr++;r1ms_accE=0;r1ms_steps=0;
+    updateBurstSpec();
+  }
+  simMs+=net.dt;
+}
+function updateBurstSpec(){
+  const ptr=r1ms_ptr;
+  const cur=rate1ms[(ptr-1)%8192];
+  if(!btAbove && cur>=BT_THRESH_UP){
+    btAbove=true;
+    if(simMs-btLastOnset>BT_REFRAC && ptr>PSD_SKIP+PSD_N){
+      btLastOnset=simMs;
+      btPending.push({onsetPtr:ptr-1});
+    }
+  }
+  if(btAbove && cur<BT_THRESH_DN) btAbove=false;
+  for(let i=btPending.length-1;i>=0;i--){
+    const pb=btPending[i];
+    if(ptr-pb.onsetPtr >= PSD_SKIP+PSD_N){
+      computePSD(pb.onsetPtr);
+      btPending.splice(i,1);
+    }
+  }
+}
+function computePSD(onsetPtr){
+  const start=onsetPtr+PSD_SKIP;
+  if(start+PSD_N>r1ms_ptr||r1ms_ptr-start>8190) return;
+  const seg=new Float64Array(PSD_N);
+  let mu=0;
+  for(let i=0;i<PSD_N;i++){seg[i]=rate1ms[(start+i)%8192];mu+=seg[i];}
+  mu/=PSD_N;
+  for(let i=0;i<PSD_N;i++){
+    const h=0.5-0.5*Math.cos(2*Math.PI*i/(PSD_N-1));
+    seg[i]=(seg[i]-mu)*h;
+  }
+  const pwr=fft(seg);
+  for(let i=0;i<PSD_BINS;i++) psdAccum[i]+=pwr[i];
+  if(psdHist.length>=8) psdHist.shift();
+  psdHist.push(new Float64Array(pwr));
+  btCount++;
+}
+function trimHistory(){
+  const tmin=simMs-WIN_MS;
+  while(rasterDots.length&&rasterDots[0].t<tmin)rasterDots.shift();
+  while(vmHist.length&&vmHist[0].t<tmin)vmHist.shift();
+  while(rateHist.length&&rateHist[0].t<tmin)rateHist.shift();
+}
+
+/* =================================================================
+   CANVAS RENDERING
+================================================================= */
+const cv={};const ctx={};
+['raster','rate','spec','vm','sc'].forEach(id=>{
+  cv[id]=document.getElementById(id);ctx[id]=cv[id].getContext('2d');fitDPR(cv[id],ctx[id]);
+});
+function fitDPR(c,g){
+  const dpr=window.devicePixelRatio||1,w=c.width,h=c.height;
+  c.style.height=h+'px';c.width=w*dpr;c.height=h*dpr;g.scale(dpr,dpr);
+  c.style.width='100%';c._w=w;c._h=h;
+}
+function gridBG(g,W,H,sx,sy){
+  g.fillStyle='#05080a';g.fillRect(0,0,W,H);
+  g.strokeStyle='#0c2219';g.lineWidth=1;g.beginPath();
+  for(let x=0;x<=W;x+=sx){g.moveTo(x+.5,0);g.lineTo(x+.5,H);}
+  for(let y=0;y<=H;y+=sy){g.moveTo(0,y+.5);g.lineTo(W,y+.5);}
+  g.stroke();
+}
+function cssvar(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+let scCache=null;
+
+function drawRaster(){
+  const c=cv.raster,g=ctx.raster,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/6);
+  const tmin=simMs-WIN_MS,NE=net.S.NE,NI=net.S.NI,sp=H*.6;
+  g.strokeStyle='#13202a';g.beginPath();g.moveTo(0,sp+.5);g.lineTo(W,sp+.5);g.stroke();
+  g.globalAlpha=.8;
+  for(const d of rasterDots){
+    const x=(d.t-tmin)/WIN_MS*W;if(x<0||x>W)continue;
+    if(d.exc){const y=3+(d.idx/NE)*(sp-6);g.fillStyle='#5dff9e';g.fillRect(x,y,1.5,1.5);}
+    else{const y=sp+3+(d.idx/NI)*(H-sp-6);g.fillStyle='#ffb454';g.fillRect(x,y,1.5,1.5);}
+  }
+  g.globalAlpha=1;
+  g.fillStyle='#76837c';g.font="9.5px 'IBM Plex Mono'";g.fillText('E',4,13);g.fillText('I',4,sp+14);
+}
+
+const RMAX=80;
+function drawRate(){
+  const c=cv.rate,g=ctx.rate,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/4);
+  g.fillStyle='#76837c';g.font="9px 'IBM Plex Mono'";
+  for(let r=0;r<=RMAX;r+=20){const y=H-(r/RMAX)*H;g.fillText(r,4,y-1);}
+  const tmin=simMs-WIN_MS;
+  if(scCache){
+    g.setLineDash([4,4]);
+    for(const fp of scCache.fps){
+      if(fp.nu>RMAX)continue;
+      const y=H-(fp.nu/RMAX)*H;
+      g.strokeStyle=fp.stable?'rgba(70,214,255,.5)':'rgba(255,93,108,.45)';
+      g.beginPath();g.moveTo(0,y);g.lineTo(W,y);g.stroke();
+    }
+    g.setLineDash([]);
+  }
+  function trace(key,col){
+    g.strokeStyle=col;g.lineWidth=1.5;g.beginPath();let f=1;
+    for(const h of rateHist){const x=(h.t-tmin)/WIN_MS*W,y=H-(Math.min(h[key],RMAX)/RMAX)*H;
+      if(f){g.moveTo(x,y);f=0;}else g.lineTo(x,y);}
+    g.stroke();
+  }
+  trace('i','#ffb454');trace('e','#5dff9e');
+}
+
+function heatColor(v){
+  // v in [0,1]: black → deep-green → bright-green → white
+  if(v<0)v=0; if(v>1)v=1;
+  const v3=v*3;
+  if(v<.33){const t=v3;return`rgba(0,${(t*110)|0},${(t*35)|0},1)`;}
+  if(v<.66){const t=v3-1;return`rgba(${(t*70)|0},${110+(t*145)|0},${(35+t*25)|0},1)`;}
+  const t=v3-2;return`rgba(${(70+t*185)|0},255,${(60+t*195)|0},1)`;
+}
+function drawAvgPSD(){
+  const c=cv.spec,g=ctx.spec,W=c._w,H=c._h;
+  g.fillStyle='#02060a';g.fillRect(0,0,W,H);
+  const pL=44,pB=22,pT=14,pR=10,pW=W-pL-pR,pH=H-pB-pT;
+  const binHz=1000/PSD_N;
+  const Xf=f=>pL+(f/PSD_FMAX)*pW;
+  const Yv=v=>pT+pH-Math.max(0,Math.min(1,v))*pH;
+
+  if(btCount===0){
+    g.fillStyle='#76837c';g.font="11px 'IBM Plex Mono'";
+    g.fillText('Burst-averaged power spectrum — waiting for up-states…',pL+8,H/2-8);
+    g.fillText('Run the "Slow Osc + γ chirp" preset.',pL+8,H/2+10);
+    return;
+  }
+
+  // Global max of the average for normalisation
+  let gmax=1e-9;
+  for(let i=2;i<=PSD_BMAX;i++) gmax=Math.max(gmax,psdAccum[i]);
+
+  // Gamma band background
+  g.fillStyle='rgba(93,255,158,.04)';
+  g.fillRect(Xf(30),pT,Xf(140)-Xf(30),pH);
+
+  // Grid lines
+  g.strokeStyle='rgba(43,48,56,.55)';g.lineWidth=0.5;
+  for(let f=0;f<=PSD_FMAX;f+=20){
+    g.beginPath();g.moveTo(Xf(f),pT);g.lineTo(Xf(f),pT+pH);g.stroke();
+  }
+  for(let v=0;v<=1;v+=0.25){
+    g.beginPath();g.moveTo(pL,Yv(v));g.lineTo(pL+pW,Yv(v));g.stroke();
+  }
+
+  // Individual burst spectra (dim overlay, each normalised to its own max)
+  g.lineWidth=1;
+  for(let k=0;k<psdHist.length;k++){
+    const sp=psdHist[k];
+    let sm=1e-9;for(let i=2;i<=PSD_BMAX;i++)sm=Math.max(sm,sp[i]);
+    const alpha=0.08+0.06*(k/psdHist.length);
+    g.strokeStyle=`rgba(93,255,158,${alpha})`;
+    g.beginPath();let ff=1;
+    for(let i=2;i<=PSD_BMAX;i++){
+      const f=i*binHz;if(f>PSD_FMAX)break;
+      const v=sp[i]/sm;
+      if(ff){g.moveTo(Xf(f),Yv(v));ff=0;}else g.lineTo(Xf(f),Yv(v));
+    }
+    g.stroke();
+  }
+
+  // Average line — bright phosphor green
+  g.strokeStyle='#5dff9e';g.lineWidth=2.2;
+  g.shadowColor='#5dff9e';g.shadowBlur=7;
+  g.beginPath();let ff=1;
+  for(let i=2;i<=PSD_BMAX;i++){
+    const f=i*binHz;if(f>PSD_FMAX)break;
+    const v=psdAccum[i]/gmax;
+    if(ff){g.moveTo(Xf(f),Yv(v));ff=0;}else g.lineTo(Xf(f),Yv(v));
+  }
+  g.stroke();g.shadowBlur=0;
+
+  // Peak finder (search 15-PSD_FMAX Hz)
+  let pkBin=2,pkVal=0;
+  for(let i=2;i<=PSD_BMAX;i++){
+    if(i*binHz<15)continue;
+    if(psdAccum[i]>pkVal){pkVal=psdAccum[i];pkBin=i;}
+  }
+  const pkF=pkBin*binHz;
+  g.strokeStyle='rgba(255,210,63,.75)';g.lineWidth=1.2;g.setLineDash([4,3]);
+  g.beginPath();g.moveTo(Xf(pkF),pT);g.lineTo(Xf(pkF),pT+pH);g.stroke();
+  g.setLineDash([]);
+  g.fillStyle='#ffd23f';g.font="bold 10px 'IBM Plex Mono'";
+  g.fillText(pkF.toFixed(0)+'Hz',Xf(pkF)+3,pT+13);
+
+  // Axes
+  g.strokeStyle='#2b3038';g.lineWidth=1;
+  g.beginPath();g.moveTo(pL,pT);g.lineTo(pL,pT+pH);g.lineTo(pL+pW,pT+pH);g.stroke();
+
+  // X labels
+  g.fillStyle='#76837c';g.font="9px 'IBM Plex Mono'";
+  for(let f=0;f<=PSD_FMAX;f+=20){
+    g.fillText(f,Xf(f)-(f>9?6:3),pT+pH+14);
+  }
+  g.fillText('Hz',pL+pW+2,pT+pH+14);
+
+  // Y labels
+  for(let v=0;v<=1;v+=0.25){
+    g.fillText((v*100).toFixed(0)+'%',2,Yv(v)+3);
+  }
+
+  // Badge
+  g.fillStyle='#ffd23f';g.font="bold 10.5px 'IBM Plex Mono'";
+  g.fillText('N='+btCount+' bursts',pL+pW-88,pT+13);
+
+  el('gfreq').textContent='N='+btCount+' · peak '+pkF.toFixed(0)+'Hz';
+  el('rdG').textContent=pkF.toFixed(0)+'Hz';
+}
+function drawVm(){
+  const c=cv.vm,g=ctx.vm,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/3);
+  const vlo=P.Vr-4,vhi=P.Vth+7,Y=v=>H-((v-vlo)/(vhi-vlo))*H;
+  g.setLineDash([3,3]);
+  g.strokeStyle='rgba(255,93,108,.55)';g.beginPath();g.moveTo(0,Y(P.Vth));g.lineTo(W,Y(P.Vth));g.stroke();
+  g.strokeStyle='rgba(118,131,124,.4)';g.beginPath();g.moveTo(0,Y(P.Vr));g.lineTo(W,Y(P.Vr));g.stroke();
+  g.setLineDash([]);
+  g.fillStyle='#76837c';g.font="9px 'IBM Plex Mono'";
+  g.fillText('Vθ',4,Y(P.Vth)-2);g.fillText('Vr',4,Y(P.Vr)-2);
+  const tmin=simMs-WIN_MS;
+  g.strokeStyle='#5dff9e';g.lineWidth=1.4;g.beginPath();let f=1;
+  for(const h of vmHist){const x=(h.t-tmin)/WIN_MS*W,y=Y(h.v);if(f){g.moveTo(x,y);f=0;}else g.lineTo(x,y);}
+  g.stroke();
+}
+function drawSC(){
+  const c=cv.sc,g=ctx.sc,W=c._w,H=c._h;
+  const pad=38,pW=W-pad-12,pH=H-pad-12,x0=pad,y0=H-pad;
+  const AX=170,X=nu=>x0+(nu/AX)*pW,Yp=nu=>y0-(Math.min(nu,AX)/AX)*pH;
+  gridBG(g,W,H,pW/8,pH/8);
+  g.strokeStyle='#252930';g.lineWidth=1;g.beginPath();
+  g.moveTo(x0,y0);g.lineTo(x0+pW,y0);g.moveTo(x0,y0);g.lineTo(x0,y0-pH);g.stroke();
+  g.fillStyle='#76837c';g.font="9.5px 'IBM Plex Mono'";
+  for(let r=0;r<=160;r+=40){g.fillText(r,X(r)-6,y0+13);g.fillText(r,x0-26,Yp(r)+3);}
+  g.fillStyle='#76837c';g.font="10.5px 'Saira Semi Condensed'";
+  g.fillText('ν_in (Hz)',x0+pW-72,y0+24);
+  g.save();g.translate(x0-28,y0-pH+46);g.rotate(-Math.PI/2);g.fillText('ν_out = Φ(ν_in) (Hz)',0,0);g.restore();
+  g.strokeStyle='#46d6ff';g.setLineDash([5,4]);g.lineWidth=1.1;
+  g.beginPath();g.moveTo(X(0),Yp(0));g.lineTo(X(AX),Yp(AX));g.stroke();g.setLineDash([]);
+  if(scCache){
+    g.strokeStyle='#5dff9e';g.lineWidth=2;g.beginPath();
+    for(let i=0;i<scCache.gx.length;i++){const x=X(scCache.gx[i]),y=Yp(scCache.gy[i]);i===0?g.moveTo(x,y):g.lineTo(x,y);}
+    g.stroke();g.shadowColor='#5dff9e';g.shadowBlur=6;g.stroke();g.shadowBlur=0;
+    for(const fp of scCache.fps){
+      const x=X(fp.nu),y=Yp(fp.nu);g.lineWidth=2;
+      if(fp.stable){g.fillStyle='#fff';g.beginPath();g.arc(x,y,5,0,7);g.fill();}
+      else{g.strokeStyle='#ff5d6c';g.beginPath();g.arc(x,y,5,0,7);g.stroke();}
+    }
+  }
+  const ne=lastRate.e,mx=X(ne),my=Yp(ne);
+  g.fillStyle='#ffd23f';g.shadowColor='#ffd23f';g.shadowBlur=10;
+  g.beginPath();g.arc(mx,my,6,0,7);g.fill();g.shadowBlur=0;
+  g.strokeStyle='rgba(255,210,63,.35)';g.lineWidth=1;g.setLineDash([2,3]);
+  g.beginPath();g.moveTo(mx,y0);g.lineTo(mx,my);g.lineTo(x0,my);g.stroke();g.setLineDash([]);
+}
+
+/* =================================================================
+   MAIN LOOP
+================================================================= */
+let running=false, ffMode=false;
+let STEPS_PER_FRAME=50;
+
+function readoutRates(){
+  const dt=net.dt,NE=net.S.NE,NI=net.S.NI,ms=STEPS_PER_FRAME*dt;
+  const e=net.spkE/NE/ms*1000,i=net.spkI/NI/ms*1000;
+  net.spkE=0;net.spkI=0;
+  lastRate.e=.6*lastRate.e+.4*e;lastRate.i=.6*lastRate.i+.4*i;
+  rateHist.push({t:simMs,e:lastRate.e,i:lastRate.i});
+}
+function el(id){return document.getElementById(id);}
+function updateReadouts(){
+  el('rdE').textContent=lastRate.e.toFixed(1);
+  el('rdI').textContent=lastRate.i.toFixed(1);
+  el('rdW').textContent=net.wbar.toFixed(2);
+  el('vmid').textContent='#'+net.sampleE;
+  el('gfreq').textContent='N='+btCount+' bursts';
+  el('rdG').textContent=btCount>0?btCount+' bursts':'—';
+  if(scCache){
+    const st=scCache.fps.filter(f=>f.stable).map(f=>f.nu.toFixed(1));
+    const sa=scCache.fps.filter(f=>!f.stable).map(f=>f.nu.toFixed(1));
+    el('rdMF').textContent=st.join(' / ');
+    el('fprd').textContent='stable: '+st.join(', ')+' Hz · saddle: '+sa.join(', ')+' Hz';
+  }
+  const up=lastRate.e>15;
+  el('rdSt').textContent=up?'UP':'DOWN';el('rdSt').className='v '+(up?'ve':'vi');
+  const pill=el('pill');pill.textContent=up?'▲ UP-STATE':'▼ DOWN-STATE';
+  pill.className='pill '+(up?'up':'dn');
+}
+function frame(){
+  if(running){
+    for(let s=0;s<STEPS_PER_FRAME;s++){stepNet();pushHistory();}
+    readoutRates();trimHistory();frameCount++;
+    if(frameCount%4===0){scCache=selfConsistency(net.S,net.wbar,net.Rbar);}
+    updateReadouts();
+  }
+  drawRaster();drawRate();drawAvgPSD();drawVm();drawSC();
+  requestAnimationFrame(frame);
+}
+
+/* =================================================================
+   PARAMS, SLIDERS, PRESETS
+================================================================= */
+const DEFAULT={NE:300,NI:200,CE:80,CI:55,
+  muE:11,muI:10,sigE:3.6,sigI:3.2,
+  gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,
+  b:0.1,tauw:300,U:0,taurec:300,
+  dmin:0.3,dmax:2.8};
+let S=Object.assign({},DEFAULT);
+
+const SLIDERS={
+  drv:[['muE','μ_E drive',5,18,.5,' mV'],['muI','μ_I drive',2,15,.5,' mV'],
+       ['sigE','σ_E noise',1,7,.1,' mV'],['sigI','σ_I noise',1,6,.1,' mV']],
+  gns:[['gEE','g_EE E→E',15,80,1,' mV'],['gEI','g_EI I→E',15,90,1,' mV'],
+       ['gIE','g_IE E→I',5,50,1,' mV'],['gII','g_II I→I',4,30,1,' mV'],
+       ['tauSE','τ_SE exc',10,200,5,' ms']],
+  fat:[['b','SFA strength b',0,2.5,.05,' mV/sp'],['tauw','τ_w adapt',80,600,10,' ms'],
+       ['U','STD utilisation U',0,.7,.02,''],['taurec','τ_rec recovery',100,800,10,' ms']],
+  net:[['dmax','delay spread d_max',0.5,3.0,.1,' ms']]
+};
+function buildSliders(){
+  for(const grp in SLIDERS){
+    const host=el(grp);host.innerHTML='';
+    for(const[key,lbl,mn,mx,st,un]of SLIDERS[grp]){
+      const d=document.createElement('div');d.className='sl';
+      d.innerHTML=`<label><span class="n">${lbl}</span><span class="va" id="lv_${key}">${S[key]}${un}</span></label>
+        <input type="range" min="${mn}" max="${mx}" step="${st}" value="${S[key]}" id="in_${key}">`;
+      host.appendChild(d);
+      d.querySelector('input').addEventListener('input',inp=>{
+        S[key]=parseFloat(inp.target.value);el('lv_'+key).textContent=S[key]+un;
+        net.S=S;scCache=selfConsistency(S,net.wbar,net.Rbar);
+        if(key==='dmax'||key==='dmin'){buildNet(S);resetHistory();}
+        clearPre();
+      });
+    }
+  }
+}
+function refreshUI(){
+  for(const grp in SLIDERS)for(const[key,,,,,un]of SLIDERS[grp]){
+    const inp=el('in_'+key);if(inp){inp.value=S[key];el('lv_'+key).textContent=S[key]+un;}
+  }
+}
+const PRESETS={
+  bistable:{muE:11,muI:10,sigE:3.6,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:.1,tauw:300,U:0,taurec:300,dmax:2.8},
+  transient:{muE:11,muI:10,sigE:3.6,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:1.4,tauw:250,U:0,taurec:300,dmax:2.8},
+  gamma:{muE:16,muI:10,sigE:2.2,sigI:3.2,gEE:40,gEI:40,gIE:16,gII:10,tauSE:60,b:2.5,tauw:200,U:0,taurec:300,dmax:2.8},
+  slowosc:{muE:11.5,muI:10,sigE:4.2,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:65,b:.55,tauw:200,U:.15,taurec:280,dmax:2.8},
+  async:{muE:8,muI:10,sigE:3.4,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:.1,tauw:300,U:0,taurec:300,dmax:2.8}
+};
+const HINTS={
+  bistable:'Two attractors. Ignite → up-state latches; amber marker sits on upper fixed point. Mean-field (dashed lines) and microscopic rate agree. Spectrogram shows broadband noise in down-state, incoherent activity in asynchronous up-state.',
+  transient:'Strong spike-frequency adaptation (b=1.4). Ignite → w̄ climbs → upper fixed point slides left and annihilates against the saddle (visible live on the SC plot) → up-state collapses. A transiently unstable high-frequency attractor.',
+  gamma:'<b>Intraburst gamma with downward chirp.</b> Here μ_E=16 puts the network in a <i>relaxation-oscillator</i> regime: at w=0 the system is monostable-up (no stable down-state at any w). Adaptation accumulates rapidly (b=2.5, τ_w=200ms), overshooting the fold at w_c≈9–10mV → up-state collapses. Because there is no stable down-state, the network spontaneously re-ignites once w decays, producing <b>autonomous slow oscillations at ~0.5–1 Hz</b>. Within each up-state (~300ms), the E–I loop resonates at gamma frequency (50–90Hz at onset). As adaptation reduces the effective drive, the oscillation period lengthens: the spectrogram (CH3) shows a <b>descending frequency ridge — the intraburst chirp</b> — from ~80Hz at onset to ~30Hz before collapse. The down-state (between ridges) is silent. Mean-field captures the time-averaged rate; the oscillatory fine structure is purely microscopic.',
+  slowosc:'Relaxation-oscillator regime: higher drive + adaptation + depression. After the up-state collapses, noise may re-ignite it; at N=500 you may need to press Ignite again. Tune b and τ_w to change cycle rhythm.',
+  async:'Sub-threshold drive: only the down-state exists (monostable). Ignition decays immediately. Raise μ_E into [10.5,11.5] or increase g_EE to restore bistability.'
+};
+function applyPreset(name){
+  S=Object.assign({},DEFAULT,PRESETS[name]);
+  buildNet(S);net.S=S;scCache=selfConsistency(S,0,1);refreshUI();resetHistory();
+  el('hint').innerHTML=HINTS[name];
+  document.querySelectorAll('.bpre').forEach(b=>b.classList.toggle('on',b.dataset.p===name));
+}
+function clearPre(){document.querySelectorAll('.bpre').forEach(b=>b.classList.remove('on'));}
+function resetHistory(){
+  rasterDots.length=0;rateHist.length=0;vmHist.length=0;
+  rate1ms.fill(0);r1ms_ptr=0;r1ms_accE=0;r1ms_steps=0;
+  psdAccum.fill(0);psdHist.length=0;btCount=0;btAbove=false;btLastOnset=-9999;btPending.length=0;
+  simMs=0;lastRate={e:0,i:0};frameCount=0;
+}
+function igniteUp(){net.kickAmp=18;net.kickUntil=net.step*net.dt+180;}
+el('run').addEventListener('click',()=>{
+  running=!running;el('run').textContent=running?'❚❚ Pause':'▶ Run';
+  el('run').classList.toggle('bp',!running);
+});
+el('ignite').addEventListener('click',()=>{
+  if(!running){running=true;el('run').textContent='❚❚ Pause';el('run').classList.remove('bp');}
+  igniteUp();
+});
+el('ff').addEventListener('click',()=>{
+  ffMode=!ffMode;
+  STEPS_PER_FRAME=ffMode?3000:50;
+  el('ff').textContent=ffMode?'⏹ Normal speed':'⏩ Fast-forward';
+  el('ff').classList.toggle('bp',ffMode);
+  if(!running){running=true;el('run').textContent='❚❚ Pause';el('run').classList.remove('bp');}
+});
+el('reset').addEventListener('click',()=>{
+  ffMode=false;STEPS_PER_FRAME=50;
+  el('ff').textContent='⏩ Fast-forward';el('ff').classList.remove('bp');
+  buildNet(S);net.S=S;resetHistory();scCache=selfConsistency(S,0,1);
+});
+document.querySelectorAll('.bpre').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.p)));
+
+// boot
+buildNet(S);buildSliders();scCache=selfConsistency(S,0,1);updateReadouts();
+document.querySelector('.bpre[data-p="bistable"]').classList.add('on');
+el('hint').innerHTML=HINTS.bistable;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

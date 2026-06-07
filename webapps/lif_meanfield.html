@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIF Network — Mean-Field vs. Microscopic Bistability</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --chassis:#15171c;
+  --chassis2:#1c1f26;
+  --panel:#0c0e12;
+  --bezel:#2a2e38;
+  --screen:#05080a;
+  --grid:#0d2620;
+  --phos-e:#5dff9e;      /* excitatory phosphor green */
+  --phos-i:#ffb454;      /* inhibitory phosphor amber */
+  --phos-dim:#1c3a2e;
+  --cyan:#46d6ff;
+  --ink:#cdd6d2;
+  --ink-dim:#76837c;
+  --hot:#ff5d6c;
+  --line:#2b3038;
+  --accent:#ffd23f;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 600px at 70% -10%, #1d2128 0%, transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, #181b22 0%, transparent 55%),
+    var(--chassis);
+  color:var(--ink);
+  font-family:'IBM Plex Mono',ui-monospace,monospace;
+  font-size:13px;
+  padding:18px;
+  background-attachment:fixed;
+}
+body::before{ /* fine grain overlay */
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:999;opacity:.035;
+  background-image:repeating-linear-gradient(0deg,#fff 0,#fff 1px,transparent 1px,transparent 3px);
+  mix-blend-mode:overlay;
+}
+.wrap{max-width:1480px;margin:0 auto}
+
+header{
+  display:flex;align-items:flex-end;justify-content:space-between;gap:24px;
+  border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:16px;
+}
+h1{
+  font-family:'Saira Semi Condensed',sans-serif;font-weight:700;
+  font-size:30px;letter-spacing:.5px;color:var(--ink);line-height:.95;
+  text-transform:uppercase;
+}
+h1 b{color:var(--phos-e);font-weight:700}
+.subtitle{color:var(--ink-dim);font-size:12px;margin-top:6px;max-width:680px;line-height:1.5}
+.brandtag{
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:3px;font-size:11px;color:var(--accent);
+  border:1px solid var(--bezel);padding:6px 12px;border-radius:2px;white-space:nowrap;
+  background:linear-gradient(180deg,#1d2027,#121419);
+}
+
+.layout{display:grid;grid-template-columns:1.04fr 0.96fr;gap:16px}
+@media(max-width:1120px){.layout{grid-template-columns:1fr}}
+
+.column{display:flex;flex-direction:column;gap:14px}
+
+.instrument{
+  background:linear-gradient(180deg,var(--chassis2),var(--chassis));
+  border:1px solid var(--bezel);
+  border-radius:8px;
+  padding:12px;
+  box-shadow:0 1px 0 #3a404c inset,0 14px 30px -18px #000;
+}
+.scope-label{
+  display:flex;justify-content:space-between;align-items:center;
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:2px;font-size:11px;color:var(--ink-dim);margin-bottom:8px;
+}
+.scope-label .tag{color:var(--phos-e)}
+.scope-label .right{color:var(--ink-dim);font-size:10.5px;letter-spacing:1px}
+.screen-frame{
+  background:var(--screen);
+  border-radius:5px;
+  border:1px solid #000;
+  box-shadow:0 0 0 2px #1b1e25,0 0 24px -6px #000 inset;
+  position:relative;overflow:hidden;
+}
+.screen-frame::after{ /* CRT vignette + scanlines */
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.16) 3px),
+    radial-gradient(120% 120% at 50% 50%,transparent 60%,rgba(0,0,0,.55) 100%);
+}
+canvas{display:block;width:100%}
+
+/* readout chips */
+.readouts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{
+  background:#0a0c10;border:1px solid var(--line);border-radius:3px;
+  padding:5px 9px;display:flex;flex-direction:column;gap:1px;min-width:84px;
+}
+.chip .k{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-dim)}
+.chip .v{font-size:15px;font-weight:600}
+.v.e{color:var(--phos-e)} .v.i{color:var(--phos-i)} .v.c{color:var(--cyan)} .v.w{color:var(--accent)}
+
+/* controls */
+.controls{
+  background:linear-gradient(180deg,var(--chassis2),var(--chassis));
+  border:1px solid var(--bezel);border-radius:8px;padding:14px 16px;
+  box-shadow:0 1px 0 #3a404c inset;
+}
+.ctl-head{
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;
+  letter-spacing:2px;font-size:11px;color:var(--ink-dim);
+  margin:2px 0 10px;display:flex;justify-content:space-between;align-items:center;
+}
+.btnrow{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+button{
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.2px;
+  font-size:12px;font-weight:600;color:var(--ink);
+  background:linear-gradient(180deg,#23272f,#171a20);
+  border:1px solid var(--bezel);border-radius:3px;padding:8px 13px;cursor:pointer;
+  transition:all .12s;
+}
+button:hover{border-color:var(--phos-e);color:#fff}
+button:active{transform:translateY(1px)}
+button.primary{background:linear-gradient(180deg,#1d3b2c,#0f241a);border-color:#2e6a4c;color:var(--phos-e)}
+button.primary:hover{border-color:var(--phos-e);box-shadow:0 0 14px -4px var(--phos-e)}
+button.hot{background:linear-gradient(180deg,#3b1d22,#240f13);border-color:#6a2e36;color:var(--hot)}
+button.hot:hover{box-shadow:0 0 14px -4px var(--hot)}
+button.preset{background:#14171d;font-size:11px;padding:7px 10px}
+button.preset.on{border-color:var(--accent);color:var(--accent)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px}
+@media(max-width:540px){.grid2{grid-template-columns:1fr}}
+.sl{padding:5px 0}
+.sl label{display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;color:var(--ink)}
+.sl label .name{color:var(--ink-dim)}
+.sl label .val{color:var(--phos-e);font-weight:600}
+.sl input[type=range]{
+  -webkit-appearance:none;width:100%;height:3px;border-radius:3px;
+  background:var(--line);outline:none;
+}
+.sl input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;border-radius:50%;
+  background:var(--phos-e);cursor:pointer;border:2px solid #0c0e12;
+  box-shadow:0 0 8px -1px var(--phos-e);
+}
+.sl input[type=range]::-moz-range-thumb{
+  width:13px;height:13px;border-radius:50%;background:var(--phos-e);
+  cursor:pointer;border:2px solid #0c0e12;
+}
+.divider{height:1px;background:var(--line);margin:12px 0 10px}
+.sec-title{
+  font-family:'Saira Semi Condensed',sans-serif;text-transform:uppercase;letter-spacing:1.5px;
+  font-size:10.5px;color:var(--accent);margin:4px 0 4px;opacity:.85;
+}
+.note{font-size:11px;color:var(--ink-dim);line-height:1.55;margin-top:4px}
+.legend{display:flex;gap:16px;font-size:10.5px;color:var(--ink-dim);margin-top:7px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.foot{margin-top:18px;color:var(--ink-dim);font-size:11px;line-height:1.6;border-top:1px solid var(--line);padding-top:12px}
+.foot code{color:var(--phos-e);background:#0a0c10;padding:1px 5px;border-radius:3px}
+.statepill{
+  font-family:'Saira Semi Condensed',sans-serif;letter-spacing:2px;font-size:12px;
+  padding:3px 10px;border-radius:3px;border:1px solid var(--line);
+}
+.statepill.up{color:var(--phos-e);border-color:#2e6a4c}
+.statepill.down{color:var(--phos-i);border-color:#6a4a2e}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Up / Down States &nbsp;·&nbsp; <b>Mean-Field</b> meets the <b>Spikes</b></h1>
+      <div class="subtitle">A recurrent network of 500 leaky integrate-and-fire neurons (300 E / 200 I, sparse random wiring) with spike-frequency adaptation and short-term depression. The left bench is the microscopic oscilloscope; the right bench is the live Ricciardi self-consistency. Watch the two agree — and watch fatigue annihilate the high-rate attractor.</div>
+    </div>
+    <div class="brandtag">LIF · Ricciardi · Brunel regime</div>
+  </header>
+
+  <div class="layout">
+    <!-- LEFT: oscilloscope -->
+    <div class="column">
+      <div class="instrument">
+        <div class="scope-label"><span><span class="tag">CH1</span> &nbsp;RASTER — spike times × neuron index</span><span class="right">E top · I bottom</span></div>
+        <div class="screen-frame"><canvas id="raster" width="720" height="240"></canvas></div>
+      </div>
+      <div class="instrument">
+        <div class="scope-label"><span><span class="tag">CH2</span> &nbsp;POPULATION RATE ν(t)</span><span class="right">solid = micro · dashed = MF fixed pts</span></div>
+        <div class="screen-frame"><canvas id="rate" width="720" height="170"></canvas></div>
+      </div>
+      <div class="instrument">
+        <div class="scope-label"><span><span class="tag">CH3</span> &nbsp;MEMBRANE Vₘ(t) — sample E neuron</span><span class="right" id="vmid">#—</span></div>
+        <div class="screen-frame"><canvas id="vm" width="720" height="130"></canvas></div>
+        <div class="readouts">
+          <div class="chip"><span class="k">ν_E micro</span><span class="v e" id="rdEmic">0.0</span></div>
+          <div class="chip"><span class="k">ν_I micro</span><span class="v i" id="rdImic">0.0</span></div>
+          <div class="chip"><span class="k">ν_E mean-field</span><span class="v c" id="rdEmf">—</span></div>
+          <div class="chip"><span class="k">adaptation w̄</span><span class="v w" id="rdW">0.00</span></div>
+          <div class="chip"><span class="k">STD R̄</span><span class="v w" id="rdR">1.00</span></div>
+          <div class="chip"><span class="k">network</span><span class="v" id="rdState">DOWN</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: self-consistency + controls -->
+    <div class="column">
+      <div class="instrument">
+        <div class="scope-label"><span><span class="tag">SC</span> &nbsp;SELF-CONSISTENCY &nbsp; ν_out = Φ(ν_in)</span><span class="right" id="fpreadout">fixed points: —</span></div>
+        <div class="screen-frame"><canvas id="sc" width="560" height="430"></canvas></div>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--phos-e)"></span>Φ_E curve (current fatigue)</span>
+          <span><span class="dot" style="background:var(--cyan)"></span>diagonal ν_out=ν_in</span>
+          <span><span class="dot" style="background:#fff;border:1px solid #000"></span>stable FP</span>
+          <span><span class="dot" style="background:transparent;border:1px solid var(--hot)"></span>unstable (saddle)</span>
+          <span><span class="dot" style="background:var(--accent)"></span>live network state</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="ctl-head"><span>Transport</span><span class="statepill down" id="pill">— IDLE —</span></div>
+        <div class="btnrow">
+          <button class="primary" id="run">▶ Run</button>
+          <button id="ignite">⚡ Ignite up-state</button>
+          <button class="hot" id="reset">⟲ Reset</button>
+        </div>
+        <div class="sec-title">Presets</div>
+        <div class="btnrow">
+          <button class="preset" data-preset="bistable">Bistable (latching)</button>
+          <button class="preset" data-preset="transient">Transient up (SFA)</button>
+          <button class="preset" data-preset="slowosc">Slow oscillations</button>
+          <button class="preset" data-preset="async">Down only</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="sec-title">External drive &amp; noise (mV)</div>
+        <div class="grid2" id="drive"></div>
+
+        <div class="sec-title" style="margin-top:10px">Recurrent gains g = C·J (mV)</div>
+        <div class="grid2" id="gains"></div>
+
+        <div class="sec-title" style="margin-top:10px">Fatigue — adaptation &amp; depression</div>
+        <div class="grid2" id="fatigue"></div>
+
+        <div class="note" id="hint">Hit <b>Run</b>, then <b>Ignite</b> to kick the network into the high-rate attractor. With low SFA it latches and the amber marker parks on the upper stable fixed point. Raise <b>SFA b</b> and the up fixed point slides left and annihilates against the saddle — the up-state collapses to down.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>Model.</b> Each neuron obeys <code>τ_m dV/dt = −(V−E_L) + RI(t)</code> with threshold <code>V_θ=20</code>, reset <code>V_r=10</code>, refractory <code>t_rp=2 ms</code>. Connectivity is sparse &amp; random (fixed in-degree) — this decorrelates inputs and keeps the network in the asynchronous-irregular state where the Ricciardi/Siegert transfer function <code>Φ(μ,σ)</code> is valid. Recurrent excitation is low-pass filtered (slow τ_SE) — the standard ingredient that makes a high-rate attractor dynamically stable — while inhibition is fast. External input is an Ornstein–Uhlenbeck current; its injected amplitude is <code>σ/√2</code> so the stationary membrane variance matches the σ²/2 assumed by Ricciardi. The right panel solves <code>ν_out=Φ_E(μ_E(ν,ν_I(ν)),σ_E)</code> live and marks the fixed points; adaptation w̄ shifts the curve and folds the up-state away (saddle-node).
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   1.  RICCIARDI / SIEGERT TRANSFER FUNCTION  (erfcx-stable)
+   ============================================================ */
+// Numerical-Recipes erfc -> erfcx(z)=exp(z^2)*erfc(z)
+function erfcx(z){
+  const ax=Math.abs(z);
+  const t=1/(1+0.5*ax);
+  const tau=t*Math.exp(-1.26551223+t*(1.00002368+t*(0.37409196+t*(0.09678418+
+        t*(-0.18628806+t*(0.27886807+t*(-1.13520398+t*(1.48851587+
+        t*(-0.82215223+t*0.17087277)))))))));
+  // for z>=0: erfc(z)=tau*exp(-z^2) -> erfcx=exp(z^2)*erfc=tau
+  if(z>=0) return tau;
+  // z<0: erfcx(z)=2*exp(z^2)-erfcx(|z|)
+  return 2*Math.exp(z*z)-tau;
+}
+// 16-node Gauss-Legendre on [-1,1]
+const GLx=[-0.9894009349916499,-0.9445750230732326,-0.8656312023878318,-0.755404408355003,
+-0.6178762444026438,-0.45801677765722737,-0.2816035507792589,-0.09501250983763744,
+0.09501250983763744,0.2816035507792589,0.45801677765722737,0.6178762444026438,
+0.755404408355003,0.8656312023878318,0.9445750230732326,0.9894009349916499];
+const GLw=[0.027152459411754037,0.062253523938647894,0.09515851168249279,0.12462897125553388,
+0.14959598881657674,0.16915651939500254,0.18260341504492358,0.18945061045506850,
+0.18945061045506850,0.18260341504492358,0.16915651939500254,0.14959598881657674,
+0.12462897125553388,0.09515851168249279,0.062253523938647894,0.027152459411754037];
+
+const P={ tau_m:20, trp:2, Vth:20, Vr:10, EL:0 };
+
+// rate in Hz given mu (mV) and sigma (mV)
+function Phi(mu,sig){
+  if(sig<1e-6) sig=1e-6;
+  let yt=(P.Vth-mu)/sig, yr=(P.Vr-mu)/sig;
+  if(yt>8) yt=8;  if(yr>8) yr=8;
+  if(yr>=yt) return 1000/P.trp;
+  const a=yr, b=yt, hw=0.5*(b-a), mid=0.5*(b+a);
+  let s=0;
+  for(let i=0;i<16;i++){ const u=hw*GLx[i]+mid; s+=GLw[i]*erfcx(-u); }
+  const integral=hw*s;
+  return 1000/(P.trp + P.tau_m*Math.sqrt(Math.PI)*integral);
+}
+
+/* ============================================================
+   2.  MEAN-FIELD INPUT STATISTICS & SELF-CONSISTENCY
+   ============================================================ */
+// state object S holds all tunable params + current fatigue (wbar, Rbar)
+function muSigE(nuE,nuI,S,wbar,Rbar){
+  const gEE=S.gEE*Rbar;
+  const muE=S.muE + P.tau_m*(gEE*nuE - S.gEI*nuI)/1000 - wbar;
+  const sE2=S.sigE*S.sigE + P.tau_m*((gEE*gEE)/S.CE*nuE + (S.gEI*S.gEI)/S.CI*nuI)/1000;
+  return [muE, Math.sqrt(Math.max(sE2,1e-8))];
+}
+function muSigI(nuE,nuI,S,Rbar){
+  const gIE=S.gIE*Rbar;
+  const muI=S.muI + P.tau_m*(gIE*nuE - S.gII*nuI)/1000;
+  const sI2=S.sigI*S.sigI + P.tau_m*((gIE*gIE)/S.CE*nuE + (S.gII*S.gII)/S.CI*nuI)/1000;
+  return [muI, Math.sqrt(Math.max(sI2,1e-8))];
+}
+function solveI(nuE,S,Rbar){
+  let nuI=5;
+  for(let k=0;k<60;k++){
+    const [mI,sI]=muSigI(nuE,nuI,S,Rbar);
+    nuI=0.5*nuI+0.5*Phi(mI,sI);
+  }
+  return nuI;
+}
+function Eout(nuE,S,wbar,Rbar){
+  const nuI=solveI(nuE,S,Rbar);
+  const [mE,sE]=muSigE(nuE,nuI,S,wbar,Rbar);
+  return [Phi(mE,sE), nuI];
+}
+// self-consistency curve + fixed points over a grid (used for the right panel)
+function selfConsistency(S,wbar,Rbar){
+  const N=160, gx=new Float64Array(N), gy=new Float64Array(N);
+  for(let i=0;i<N;i++){
+    const nu=0.05 + i*(170-0.05)/(N-1);
+    gx[i]=nu; gy[i]=Eout(nu,S,wbar,Rbar)[0];
+  }
+  // fixed points = sign changes of (gy-gx)
+  const fps=[];
+  for(let i=0;i<N-1;i++){
+    const d0=gy[i]-gx[i], d1=gy[i+1]-gx[i+1];
+    if(d0===0||d0*d1<0){
+      const x = d0===0 ? gx[i] : gx[i]-d0*(gx[i+1]-gx[i])/(d1-d0);
+      const slope=(gy[i+1]-gy[i])/(gx[i+1]-gx[i]);
+      fps.push({nu:x, stable:slope<1});
+    }
+  }
+  return {gx,gy,fps};
+}
+
+/* ============================================================
+   3.  MICROSCOPIC SPARSE LIF NETWORK
+   ============================================================ */
+let net=null;
+function gaussian(){ // Box–Muller
+  let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function buildNet(S){
+  const NE=S.NE, NI=S.NI, CE=S.CE, CI=S.CI;
+  // CSR out-adjacency: for each presyn, list of postsyn targets
+  function buildCSR(nPre,nPost,C){
+    // each POST picks C random PRE; we store per-PRE out lists
+    const out=Array.from({length:nPre},()=>[]);
+    const pick=new Int32Array(nPost);
+    for(let post=0;post<nPost;post++){
+      // sample C distinct pre
+      const chosen=new Set();
+      while(chosen.size<C) chosen.add((Math.random()*nPre)|0);
+      chosen.forEach(pre=>out[pre].push(post));
+    }
+    const ptr=new Int32Array(nPre+1);
+    for(let i=0;i<nPre;i++) ptr[i+1]=ptr[i]+out[i].length;
+    const idx=new Int32Array(ptr[nPre]);
+    let c=0; for(let i=0;i<nPre;i++) for(const t of out[i]) idx[c++]=t;
+    return {ptr,idx};
+  }
+  const EE=buildCSR(NE,NE,CE);   // E->E
+  const EI=buildCSR(NE,NI,CE);   // E->I
+  const IE=buildCSR(NI,NE,CI);   // I->E
+  const II=buildCSR(NI,NI,CI);   // I->I
+
+  const dt=0.1, dmin=0.5, dmax=2.8;
+  const D=Math.round(dmax/dt)+2;
+  const delE=new Int32Array(NE), delI=new Int32Array(NI);
+  for(let i=0;i<NE;i++) delE[i]=Math.round((dmin+Math.random()*(dmax-dmin))/dt);
+  for(let i=0;i<NI;i++) delI[i]=Math.round((dmin+Math.random()*(dmax-dmin))/dt);
+
+  const VE=new Float64Array(NE), VI=new Float64Array(NI);
+  for(let i=0;i<NE;i++) VE[i]=P.Vr+Math.random()*(P.Vth-P.Vr);
+  for(let i=0;i<NI;i++) VI[i]=P.Vr+Math.random()*(P.Vth-P.Vr);
+
+  net={
+    S, dt, D, EE,EI,IE,II, delE,delI, VE,VI,
+    wE:new Float64Array(NE),          // adaptation
+    RE:new Float64Array(NE).fill(1),  // STD resource (presyn E)
+    refE:new Float64Array(NE), refI:new Float64Array(NI),
+    gEexc:new Float64Array(NE), gIexc:new Float64Array(NI), // slow exc activation
+    // delayed delivery buffers
+    addEexc:Array.from({length:D},()=>new Float64Array(NE)),
+    addIexc:Array.from({length:D},()=>new Float64Array(NI)),
+    subE:Array.from({length:D},()=>new Float64Array(NE)),
+    subI:Array.from({length:D},()=>new Float64Array(NI)),
+    step:0,
+    sampleE:(Math.random()*NE)|0,
+    kickUntil:0, kickAmp:0,
+    spikesE:0, spikesI:0,          // counters since last readout
+    lastSpikesThisStepE:[],        // for raster
+    lastSpikesThisStepI:[],
+    Vsample:P.Vr,
+    wbar:0, Rbar:1
+  };
+  return net;
+}
+
+// advance one dt; returns nothing, mutates net; fills net.lastSpikes*
+function stepNet(){
+  const n=net, S=n.S, dt=n.dt, D=n.D;
+  const NE=S.NE, NI=S.NI;
+  const tau=P.tau_m, ea=Math.exp(-dt/tau), sq=Math.sqrt(1-ea*ea);
+  const sE=S.sigE/Math.SQRT2, sI=S.sigI/Math.SQRT2;
+  const JEE=S.gEE/S.CE, JEI=S.gEI/S.CI, JIE=S.gIE/S.CE, JII=S.gII/S.CI;
+  const easE=Math.exp(-dt/S.tauSE), tfac=tau/S.tauSE;
+  const useSTD=S.U>0;
+  const decW=Math.exp(-dt/S.tauw), decR=Math.exp(-dt/S.taurec);
+  const cur=n.step % D;
+
+  const VE=n.VE,VI=n.VI,wE=n.wE,RE=n.RE,refE=n.refE,refI=n.refI;
+  const gEexc=n.gEexc,gIexc=n.gIexc;
+  const aEx=n.addEexc[cur], aIx=n.addIexc[cur], sbE=n.subE[cur], sbI=n.subI[cur];
+
+  // slow exc decay + delayed exc input; inhibition delta delivery
+  for(let i=0;i<NE;i++){ gEexc[i]=gEexc[i]*easE+aEx[i]; aEx[i]=0; VE[i]+=sbE[i]; sbE[i]=0; VE[i]+=gEexc[i]*dt/tau; }
+  for(let i=0;i<NI;i++){ gIexc[i]=gIexc[i]*easE+aIx[i]; aIx[i]=0; VI[i]+=sbI[i]; sbI[i]=0; VI[i]+=gIexc[i]*dt/tau; }
+
+  const t=n.step*dt;
+  const kick = (t<n.kickUntil) ? n.kickAmp : 0;
+
+  // OU external + leak update
+  for(let i=0;i<NE;i++){
+    const tgt=S.muE+kick-wE[i];
+    VE[i]=tgt+(VE[i]-tgt)*ea+sE*sq*gaussian();
+    if(refE[i]>0){VE[i]=P.Vr; refE[i]-=dt; if(refE[i]<0)refE[i]=0;}
+    wE[i]*=decW;
+    if(useSTD) RE[i]=1-(1-RE[i])*decR;
+  }
+  for(let i=0;i<NI;i++){
+    const tgt=S.muI;
+    VI[i]=tgt+(VI[i]-tgt)*ea+sI*sq*gaussian();
+    if(refI[i]>0){VI[i]=P.Vr; refI[i]-=dt; if(refI[i]<0)refI[i]=0;}
+  }
+
+  // threshold + spike delivery
+  const firedE=[], firedI=[];
+  for(let i=0;i<NE;i++){
+    if(VE[i]>=P.Vth && refE[i]<=0){
+      VE[i]=P.Vr; refE[i]=P.trp; wE[i]+=S.b; firedE.push(i);
+      const tg=(cur+n.delE[i])%D;
+      const eff = (useSTD?RE[i]:1)*tfac;
+      const aE=n.addEexc[tg], aI=n.addIexc[tg];
+      let p0=n.EE.ptr[i], p1=n.EE.ptr[i+1];
+      for(let p=p0;p<p1;p++) aE[n.EE.idx[p]]+=JEE*eff;
+      p0=n.EI.ptr[i]; p1=n.EI.ptr[i+1];
+      for(let p=p0;p<p1;p++) aI[n.EI.idx[p]]+=JIE*eff;
+      if(useSTD) RE[i]*=(1-S.U);
+    }
+  }
+  for(let i=0;i<NI;i++){
+    if(VI[i]>=P.Vth && refI[i]<=0){
+      VI[i]=P.Vr; refI[i]=P.trp; firedI.push(i);
+      const tg=(cur+n.delI[i])%D;
+      const sE2=n.subE[tg], sI2=n.subI[tg];
+      let p0=n.IE.ptr[i], p1=n.IE.ptr[i+1];
+      for(let p=p0;p<p1;p++) sE2[n.IE.idx[p]]-=JEI;
+      p0=n.II.ptr[i]; p1=n.II.ptr[i+1];
+      for(let p=p0;p<p1;p++) sI2[n.II.idx[p]]-=JII;
+    }
+  }
+
+  n.Vsample = (refE[n.sampleE]>0)? P.Vr : VE[n.sampleE];
+  n.lastSpikesThisStepE=firedE;
+  n.lastSpikesThisStepI=firedI;
+  n.spikesE+=firedE.length; n.spikesI+=firedI.length;
+  // running fatigue averages for display + MF
+  let sw=0; for(let i=0;i<NE;i++) sw+=wE[i]; n.wbar=sw/NE;
+  if(useSTD){ let sr=0; for(let i=0;i<NE;i++) sr+=RE[i]; n.Rbar=sr/NE; } else n.Rbar=1;
+  n.step++;
+}
+
+/* ============================================================
+   4.  RENDERING  (canvas scopes)
+   ============================================================ */
+const cv={raster:el('raster'),rate:el('rate'),vm:el('vm'),sc:el('sc')};
+function el(id){return document.getElementById(id);}
+const ctx={};
+for(const k in cv){ ctx[k]=cv[k].getContext('2d'); fitDPR(cv[k],ctx[k]); }
+function fitDPR(c,g){
+  const dpr=window.devicePixelRatio||1;
+  const w=c.width, h=c.height;
+  c.style.height=h+'px';
+  c.width=w*dpr; c.height=h*dpr; g.scale(dpr,dpr);
+  c.style.width='100%';
+  c._w=w; c._h=h;
+}
+function gridBG(g,W,H,stepx,stepy){
+  g.fillStyle=getCSS('--screen'); g.fillRect(0,0,W,H);
+  g.strokeStyle=getCSS('--grid'); g.lineWidth=1; g.beginPath();
+  for(let x=0;x<=W;x+=stepx){g.moveTo(x+.5,0);g.lineTo(x+.5,H);}
+  for(let y=0;y<=H;y+=stepy){g.moveTo(0,y+.5);g.lineTo(W,y+.5);}
+  g.stroke();
+}
+function getCSS(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+// ---- scrolling history buffers ----
+const RASTER_MS=1000;        // visible window
+const rasterDots=[];         // {tRel, idx, exc}
+const rateHist=[];           // {t, e, i}
+const vmHist=[];             // {t, v}
+let simTimeMs=0;             // total simulated ms
+
+function pushHistory(){
+  const n=net, dt=n.dt;
+  // record raster spikes (subsample to keep it light)
+  for(const i of n.lastSpikesThisStepE) if(Math.random()<0.6) rasterDots.push({t:simTimeMs,idx:i,exc:true});
+  for(const i of n.lastSpikesThisStepI) if(Math.random()<0.6) rasterDots.push({t:simTimeMs,idx:i,exc:false});
+  vmHist.push({t:simTimeMs, v:n.Vsample});
+  simTimeMs+=dt;
+}
+function trimHistory(){
+  const tmin=simTimeMs-RASTER_MS;
+  while(rasterDots.length && rasterDots[0].t<tmin) rasterDots.shift();
+  while(vmHist.length && vmHist[0].t<tmin) vmHist.shift();
+  while(rateHist.length && rateHist[0].t<tmin) rateHist.shift();
+}
+
+function drawRaster(){
+  const c=cv.raster,g=ctx.raster,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/8);
+  const tmin=simTimeMs-RASTER_MS, NE=net.S.NE, NI=net.S.NI;
+  const splitY=H*0.6;
+  // divider between E and I band
+  g.strokeStyle='#13202a'; g.beginPath(); g.moveTo(0,splitY+.5); g.lineTo(W,splitY+.5); g.stroke();
+  for(const d of rasterDots){
+    const x=(d.t-tmin)/RASTER_MS*W;
+    if(x<0||x>W) continue;
+    if(d.exc){ const y=4+(d.idx/NE)*(splitY-8); g.fillStyle=getCSS('--phos-e'); g.globalAlpha=.85; g.fillRect(x,y,1.6,1.6); }
+    else{ const y=splitY+4+(d.idx/NI)*(H-splitY-8); g.fillStyle=getCSS('--phos-i'); g.globalAlpha=.85; g.fillRect(x,y,1.6,1.6); }
+  }
+  g.globalAlpha=1;
+  g.fillStyle=getCSS('--ink-dim'); g.font="10px 'IBM Plex Mono'";
+  g.fillText('E',6,14); g.fillText('I',6,splitY+16);
+}
+
+const RATE_MAX=80;
+function drawRate(){
+  const c=cv.rate,g=ctx.rate,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/4);
+  // y ticks
+  g.fillStyle=getCSS('--ink-dim'); g.font="9px 'IBM Plex Mono'";
+  for(let r=0;r<=RATE_MAX;r+=20){ const y=H-(r/RATE_MAX)*H; g.fillText(r+'',4,y-2); }
+  const tmin=simTimeMs-RASTER_MS;
+  // MF fixed-point reference lines (dashed)
+  if(scCache){
+    g.setLineDash([4,4]);
+    for(const fp of scCache.fps){
+      if(fp.nu>RATE_MAX) continue;
+      const y=H-(fp.nu/RATE_MAX)*H;
+      g.strokeStyle=fp.stable?'rgba(70,214,255,.55)':'rgba(255,93,108,.5)';
+      g.beginPath(); g.moveTo(0,y); g.lineTo(W,y); g.stroke();
+    }
+    g.setLineDash([]);
+  }
+  // micro traces
+  function trace(key,color){
+    g.strokeStyle=color; g.lineWidth=1.6; g.beginPath(); let first=true;
+    for(const h of rateHist){
+      const x=(h.t-tmin)/RASTER_MS*W; const y=H-(Math.min(h[key],RATE_MAX)/RATE_MAX)*H;
+      if(first){g.moveTo(x,y);first=false;} else g.lineTo(x,y);
+    }
+    g.stroke();
+  }
+  trace('i',getCSS('--phos-i'));
+  trace('e',getCSS('--phos-e'));
+}
+
+function drawVm(){
+  const c=cv.vm,g=ctx.vm,W=c._w,H=c._h;
+  gridBG(g,W,H,W/10,H/3);
+  const tmin=simTimeMs-RASTER_MS;
+  const vlo=P.Vr-4, vhi=P.Vth+8;
+  const Y=v=>H-((v-vlo)/(vhi-vlo))*H;
+  // threshold & reset
+  g.setLineDash([3,3]);
+  g.strokeStyle='rgba(255,93,108,.6)'; g.beginPath(); g.moveTo(0,Y(P.Vth)); g.lineTo(W,Y(P.Vth)); g.stroke();
+  g.strokeStyle='rgba(118,131,124,.5)'; g.beginPath(); g.moveTo(0,Y(P.Vr)); g.lineTo(W,Y(P.Vr)); g.stroke();
+  g.setLineDash([]);
+  g.fillStyle=getCSS('--ink-dim'); g.font="9px 'IBM Plex Mono'";
+  g.fillText('Vθ',4,Y(P.Vth)-2); g.fillText('Vr',4,Y(P.Vr)-2);
+  g.strokeStyle=getCSS('--phos-e'); g.lineWidth=1.4; g.beginPath(); let first=true,prevV=null;
+  for(const h of vmHist){
+    const x=(h.t-tmin)/RASTER_MS*W; const y=Y(h.v);
+    if(first){g.moveTo(x,y);first=false;}
+    else { if(prevV!==null && prevV<=P.Vr+0.5 && h.v<=P.Vr+0.5){} g.lineTo(x,y); }
+    prevV=h.v;
+  }
+  g.stroke();
+}
+
+let scCache=null, scNeedsRedraw=true;
+function recomputeSC(){
+  scCache=selfConsistency(net.S, net.wbar, net.Rbar);
+  scNeedsRedraw=true;
+}
+function drawSC(){
+  const c=cv.sc,g=ctx.sc,W=c._w,H=c._h;
+  const pad=40, plotW=W-pad-14, plotH=H-pad-14, x0=pad, y0=H-pad;
+  const AX=170;
+  gridBG(g,W,H,plotW/8.5,plotH/8.5);
+  const X=nu=>x0+(nu/AX)*plotW;
+  const Yp=nu=>y0-(Math.min(nu,AX)/AX)*plotH;
+  // axes
+  g.strokeStyle=getCSS('--line'); g.lineWidth=1; g.beginPath();
+  g.moveTo(x0,y0); g.lineTo(x0+plotW,y0); g.moveTo(x0,y0); g.lineTo(x0,y0-plotH); g.stroke();
+  g.fillStyle=getCSS('--ink-dim'); g.font="10px 'IBM Plex Mono'";
+  for(let r=0;r<=160;r+=40){ g.fillText(r+'',X(r)-6,y0+14); g.fillText(r+'',x0-26,Yp(r)+3); }
+  g.fillStyle=getCSS('--ink-dim'); g.font="11px 'Saira Semi Condensed'";
+  g.fillText('ν_in  (Hz)',x0+plotW-70,y0+26);
+  g.save(); g.translate(x0-30,y0-plotH+50); g.rotate(-Math.PI/2); g.fillText('ν_out = Φ(ν_in)  (Hz)',0,0); g.restore();
+  // diagonal
+  g.strokeStyle=getCSS('--cyan'); g.setLineDash([5,4]); g.lineWidth=1.2;
+  g.beginPath(); g.moveTo(X(0),Yp(0)); g.lineTo(X(AX),Yp(AX)); g.stroke(); g.setLineDash([]);
+  // Phi curve
+  if(scCache){
+    g.strokeStyle=getCSS('--phos-e'); g.lineWidth=2; g.beginPath();
+    for(let i=0;i<scCache.gx.length;i++){ const x=X(scCache.gx[i]), y=Yp(scCache.gy[i]); if(i===0)g.moveTo(x,y); else g.lineTo(x,y); }
+    g.stroke();
+    g.shadowColor=getCSS('--phos-e'); g.shadowBlur=8; g.stroke(); g.shadowBlur=0;
+    // fixed points
+    for(const fp of scCache.fps){
+      const x=X(fp.nu), y=Yp(fp.nu);
+      g.lineWidth=2;
+      if(fp.stable){ g.fillStyle='#fff'; g.beginPath(); g.arc(x,y,5,0,7); g.fill(); }
+      else{ g.strokeStyle=getCSS('--hot'); g.beginPath(); g.arc(x,y,5,0,7); g.stroke(); }
+    }
+  }
+  // live network marker at (nuE, nuE) projected onto diagonal-ish: use (nuE_in interpreted, nuE_out)
+  const ne=lastRate.e;
+  const mx=X(ne), my=Yp(ne);
+  g.fillStyle=getCSS('--accent'); g.shadowColor=getCSS('--accent'); g.shadowBlur=12;
+  g.beginPath(); g.arc(mx,my,6,0,7); g.fill(); g.shadowBlur=0;
+  g.strokeStyle='rgba(255,210,63,.4)'; g.lineWidth=1; g.setLineDash([2,3]);
+  g.beginPath(); g.moveTo(mx,y0); g.lineTo(mx,my); g.lineTo(x0,my); g.stroke(); g.setLineDash([]);
+}
+
+/* ============================================================
+   5.  MAIN LOOP
+   ============================================================ */
+let running=false;
+let lastRate={e:0,i:0};
+let rateAccumWin=[]; // sliding for instantaneous rate
+const STEPS_PER_FRAME=50;   // 5 ms of sim per frame
+let frameCount=0;
+
+function readoutRates(){
+  // instantaneous rate from spikes in the last readout interval
+  const dt=net.dt, NE=net.S.NE, NI=net.S.NI;
+  const ms=STEPS_PER_FRAME*dt;
+  const e=net.spikesE/NE/ms*1000;
+  const i=net.spikesI/NI/ms*1000;
+  net.spikesE=0; net.spikesI=0;
+  // light smoothing
+  lastRate.e=0.6*lastRate.e+0.4*e;
+  lastRate.i=0.6*lastRate.i+0.4*i;
+  rateHist.push({t:simTimeMs, e:lastRate.e, i:lastRate.i});
+}
+
+function frame(){
+  if(running){
+    for(let s=0;s<STEPS_PER_FRAME;s++){ stepNet(); pushHistory(); }
+    readoutRates();
+    trimHistory();
+    frameCount++;
+    if(frameCount%4===0) recomputeSC();   // throttle MF curve
+    updateReadouts();
+  }
+  drawRaster(); drawRate(); drawVm(); drawSC();
+  requestAnimationFrame(frame);
+}
+
+function updateReadouts(){
+  el('rdEmic').textContent=lastRate.e.toFixed(1);
+  el('rdImic').textContent=lastRate.i.toFixed(1);
+  el('rdW').textContent=net.wbar.toFixed(2);
+  el('rdR').textContent=net.Rbar.toFixed(2);
+  el('vmid').textContent='#'+net.sampleE;
+  // MF predicted state nearest to current rate
+  let mf='—';
+  if(scCache && scCache.fps.length){
+    // report stable fps
+    const st=scCache.fps.filter(f=>f.stable).map(f=>f.nu.toFixed(1));
+    mf=st.join(' / ');
+    el('fpreadout').textContent='stable: '+st.join(', ')+' Hz   ·   saddle: '+
+      scCache.fps.filter(f=>!f.stable).map(f=>f.nu.toFixed(1)).join(', ');
+  }
+  el('rdEmf').textContent=mf;
+  const up=lastRate.e>15;
+  el('rdState').textContent=up?'UP':'DOWN';
+  el('rdState').className='v '+(up?'e':'i');
+  const pill=el('pill');
+  pill.textContent=up?'▲ UP-STATE':'▼ DOWN-STATE';
+  pill.className='statepill '+(up?'up':'down');
+}
+
+/* ============================================================
+   6.  STATE / CONTROLS
+   ============================================================ */
+const DEFAULT={
+  NE:300,NI:200,CE:80,CI:55,
+  muE:11,muI:10,sigE:3.6,sigI:3.2,
+  gEE:44,gEI:48,gIE:20,gII:12,
+  tauSE:80,
+  b:0.1,tauw:300, U:0,taurec:300
+};
+let S=Object.assign({},DEFAULT);
+
+const SLIDERS={
+  drive:[
+    ['muE','μ_E ext drive',5,20,0.5,' mV'],
+    ['muI','μ_I ext drive',4,16,0.5,' mV'],
+    ['sigE','σ_E noise',1,7,0.1,' mV'],
+    ['sigI','σ_I noise',1,7,0.1,' mV'],
+  ],
+  gains:[
+    ['gEE','g_EE  E→E',20,80,1,' mV'],
+    ['gEI','g_EI  I→E',20,90,1,' mV'],
+    ['gIE','g_IE  E→I',5,45,1,' mV'],
+    ['gII','g_II  I→I',4,30,1,' mV'],
+    ['tauSE','τ_SE slow exc',20,200,5,' ms'],
+  ],
+  fatigue:[
+    ['b','SFA strength b',0,2.5,0.05,' mV/spk'],
+    ['tauw','τ_w adaptation',100,600,10,' ms'],
+    ['U','STD utilisation U',0,0.6,0.02,''],
+    ['taurec','τ_rec recovery',100,800,10,' ms'],
+  ]
+};
+function buildSliders(){
+  for(const grp in SLIDERS){
+    const host=el(grp); host.innerHTML='';
+    for(const [key,label,min,max,step,unit] of SLIDERS[grp]){
+      const d=document.createElement('div'); d.className='sl';
+      d.innerHTML=`<label><span class="name">${label}</span><span class="val" id="lv_${key}">${S[key]}${unit}</span></label>
+        <input type="range" min="${min}" max="${max}" step="${step}" value="${S[key]}" id="in_${key}">`;
+      host.appendChild(d);
+      const inp=d.querySelector('input');
+      inp.addEventListener('input',()=>{
+        S[key]=parseFloat(inp.value);
+        el('lv_'+key).textContent=S[key]+unit;
+        net.S=S; recomputeSC();
+        clearPreset();
+      });
+    }
+  }
+}
+function refreshSliderUI(){
+  for(const grp in SLIDERS) for(const [key,,,,,unit] of SLIDERS[grp]){
+    const inp=el('in_'+key); if(inp){inp.value=S[key]; el('lv_'+key).textContent=S[key]+unit;}
+  }
+}
+
+const PRESETS={
+  bistable:{muE:11,muI:10,sigE:3.6,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:0.1,tauw:300,U:0,taurec:300},
+  transient:{muE:11,muI:10,sigE:3.6,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:1.4,tauw:250,U:0,taurec:300},
+  slowosc:{muE:11.5,muI:10,sigE:4.5,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:60,b:0.6,tauw:200,U:0.15,taurec:250},
+  async:{muE:8,muI:10,sigE:3.4,sigI:3.2,gEE:44,gEI:48,gIE:20,gII:12,tauSE:80,b:0.1,tauw:300,U:0,taurec:300},
+};
+const HINTS={
+  bistable:'Two coexisting attractors. Ignite to latch the up-state; the amber marker parks on the upper stable fixed point and ν_E micro ≈ ν_E mean-field (down ≈ 0.2 Hz, up ≈ 40 Hz). The down-state is near-silent — a realistic cortical OFF period.',
+  transient:'Strong spike-frequency adaptation. Ignite the up-state and watch w̄ climb — the upper fixed point slides left along the Φ curve and annihilates against the saddle (saddle-node). The high-rate attractor collapses to the down-state: a transiently unstable high-frequency attractor.',
+  slowosc:'Relaxation-oscillator regime: more drive + adaptation + short-term depression + extra noise. Adaptation collapses the up-state; the down→up return is a noise-driven re-ignition. At N=500 spontaneous cycling is fluctuation-limited — if it settles into the down-state, press Ignite to re-trigger. Larger N would self-sustain.',
+  async:'Sub-threshold external drive — only the quiet down-state exists (monostable). Ignition decays back to baseline. Raise μ_E into [10.5, 11.5] or increase g_EE to recover bistability.'
+};
+function applyPreset(name){
+  S=Object.assign({},DEFAULT,PRESETS[name]);
+  buildNet(S); net.S=S; recomputeSC();
+  refreshSliderUI();
+  el('hint').innerHTML=HINTS[name];
+  document.querySelectorAll('.preset').forEach(b=>b.classList.toggle('on',b.dataset.preset===name));
+  resetHistory();
+}
+function clearPreset(){ document.querySelectorAll('.preset').forEach(b=>b.classList.remove('on')); }
+
+function resetHistory(){
+  rasterDots.length=0; rateHist.length=0; vmHist.length=0; simTimeMs=0;
+  lastRate={e:0,i:0};
+}
+function igniteUp(){
+  net.kickAmp=16; net.kickUntil=net.step*net.dt+160; // 160 ms, +16 mV
+}
+
+// wire buttons
+el('run').addEventListener('click',()=>{
+  running=!running;
+  el('run').textContent=running?'❚❚ Pause':'▶ Run';
+  el('run').classList.toggle('primary',!running);
+});
+el('ignite').addEventListener('click',()=>{ if(!running){running=true;el('run').textContent='❚❚ Pause';el('run').classList.remove('primary');} igniteUp(); });
+el('reset').addEventListener('click',()=>{ buildNet(S); net.S=S; resetHistory(); recomputeSC(); });
+document.querySelectorAll('.preset').forEach(b=>b.addEventListener('click',()=>applyPreset(b.dataset.preset)));
+
+// boot
+buildNet(S);
+buildSliders();
+recomputeSC();
+updateReadouts();
+document.querySelector('.preset[data-preset="bistable"]').classList.add('on');
+el('hint').innerHTML=HINTS.bistable;
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

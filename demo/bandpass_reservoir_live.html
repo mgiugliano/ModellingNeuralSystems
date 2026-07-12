@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bandpass vs. Low-pass Reservoir Computing — Live Scope</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel2: #0b0d10;
+    --text: #d8dee9;
+    --muted: #8b93a7;
+    --accent: #6fb1fc;
+    --homo: #e06c75;
+    --hetero: #61afef;
+    --band: #98c379;
+    --target: #f4f7fc;
+    --border: #2a2f3a;
+    --grid: #232833;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  header { padding: 18px 24px 10px 24px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0 0 6px 0; font-size: 20px; }
+  header p { margin: 4px 0; color: var(--muted); max-width: 1100px; }
+  header code { color: var(--accent); }
+  header a { color: var(--accent); }
+  .layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 16px;
+    padding: 16px 24px 24px 24px;
+    align-items: start;
+  }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .panel + .panel { margin-top: 14px; }
+  .panel h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+    margin: 0 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+  .ctrl { margin-bottom: 10px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--text); margin-bottom: 3px; }
+  .ctrl label span.val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .ctrl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+
+  .transport { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+  }
+  button.primary { background: var(--accent); color: #0b1220; border: none; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { color: var(--muted); font-size: 12.5px; margin-top: 6px; display: block; }
+  #sampleCount { color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  .scopebox { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .scopebox h3 { margin: 0 0 8px 0; font-size: 13px; font-weight: 600; }
+  canvas#scope { width: 100%; display: block; background: var(--panel2); border-radius: 6px; }
+  .legend { display: flex; gap: 10px; font-size: 12px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--tc); flex: none; }
+  button.tracebtn {
+    display: inline-flex; align-items: center;
+    background: transparent; border: 1px solid var(--tc); border-radius: 999px;
+    padding: 5px 12px; font-size: 12px; font-weight: 500; color: var(--text); cursor: pointer;
+    transition: opacity 120ms linear;
+  }
+  button.tracebtn.off { opacity: 0.4; text-decoration: line-through; border-color: var(--border); }
+  button.tracebtn.off .sw { background: var(--muted); }
+
+  .meters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+  .meter { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+  .meter .label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+  .meter .value { font-size: 22px; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+  .meter .bartrack { height: 8px; border-radius: 4px; background: #0007; overflow: hidden; }
+  .meter .barfill { height: 100%; border-radius: 4px; transition: width 80ms linear; }
+  .meter .sub { color: var(--muted); font-size: 11px; margin-top: 4px; }
+
+  footer { padding: 10px 24px 30px 24px; color: var(--muted); font-size: 12px; max-width: 1200px; }
+  footer h3 { color: var(--text); font-size: 13px; margin: 16px 0 6px 0; }
+  footer code { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bandpass vs. Low-pass Reservoir Computing — Live Scope</h1>
+  <p>
+    Companion to the static <code>bandpass_reservoir_demo.html</code> comparison. Same three neuron models
+    (<b style="color:var(--homo)">homogeneous low-pass</b>, <b style="color:var(--hetero)">heterogeneous
+    low-pass</b>, <b style="color:var(--band)">band-pass</b>), same shared reservoir "skeleton" — but instead of a
+    single before/after snapshot, this runs the trained reservoirs' <b>autonomous free-run generation live</b>,
+    sample by sample, on a scrolling oscilloscope-style trace, with the target (dashed) overlaid so you can watch
+    each condition track it — or drift away from it — in real time.
+  </p>
+</header>
+
+<div class="layout">
+  <!-- ================= CONTROLS ================= -->
+  <div>
+    <div class="panel">
+      <h2>Reservoir &amp; Task</h2>
+      <div class="ctrl">
+        <label>Reservoir size N <span class="val" id="v_N"></span></label>
+        <input type="range" id="N" min="40" max="300" step="10" value="150">
+      </div>
+      <div class="ctrl">
+        <label>Slow frequency f&#8321; (cycles/sample) <span class="val" id="v_f1"></span></label>
+        <input type="range" id="f1" min="0.003" max="0.03" step="0.0005" value="0.00833">
+      </div>
+      <div class="ctrl">
+        <label>Fast frequency f&#8322; (cycles/sample) <span class="val" id="v_f2"></span></label>
+        <input type="range" id="f2" min="0.03" max="0.15" step="0.001" value="0.0588">
+      </div>
+      <div class="ctrl">
+        <label>Training length <span class="val" id="v_Ttrain"></span></label>
+        <input type="range" id="Ttrain" min="1000" max="6000" step="100" value="3000">
+      </div>
+      <div class="ctrl">
+        <label>Training-state noise &sigma; <span class="val" id="v_noise"></span></label>
+        <input type="range" id="noise" min="0" max="0.02" step="0.001" value="0.002">
+      </div>
+      <div class="note">Changes above apply after you click "Reset &amp; Train".</div>
+    </div>
+
+    <div class="panel">
+      <h2 style="color:var(--homo)">Homogeneous low-pass</h2>
+      <div class="ctrl">
+        <label>Leak rate &alpha; <span class="val" id="v_alphaHomo"></span></label>
+        <input type="range" id="alphaHomo" min="0.01" max="1" step="0.01" value="0.1">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 style="color:var(--hetero)">Heterogeneous low-pass</h2>
+      <div class="ctrl">
+        <label>&alpha;<sub>min</sub> <span class="val" id="v_alphaMin"></span></label>
+        <input type="range" id="alphaMin" min="0.001" max="1" step="0.001" value="0.01">
+      </div>
+      <div class="ctrl">
+        <label>&alpha;<sub>max</sub> <span class="val" id="v_alphaMax"></span></label>
+        <input type="range" id="alphaMax" min="0.001" max="1" step="0.001" value="1.0">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2 style="color:var(--band)">Band-pass</h2>
+      <div class="ctrl">
+        <label># frequency pools <span class="val" id="v_numPools"></span></label>
+        <input type="range" id="numPools" min="2" max="20" step="1" value="8">
+      </div>
+      <div class="ctrl">
+        <label>Q (resonance sharpness) <span class="val" id="v_Q"></span></label>
+        <input type="range" id="Q" min="0.5" max="6" step="0.1" value="2.0">
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Playback</h2>
+      <div class="ctrl">
+        <label>Sweep speed (samples/s) <span class="val" id="v_speed"></span></label>
+        <input type="range" id="speed" min="5" max="500" step="5" value="80">
+      </div>
+      <div class="ctrl">
+        <label>Scope window (samples) <span class="val" id="v_window"></span></label>
+        <input type="range" id="window" min="100" max="1000" step="20" value="400">
+      </div>
+      <div class="transport">
+        <button id="resetBtn" class="primary">Reset &amp; Train</button>
+        <button id="playBtn">Pause</button>
+        <button id="stepBtn">Step</button>
+      </div>
+      <span id="status">not trained yet</span>
+      <div class="note">free-run samples generated: <span id="sampleCount">0</span></div>
+    </div>
+  </div>
+
+  <!-- ================= SCOPE ================= -->
+  <div>
+    <div class="scopebox">
+      <h3>Live free-run trace (scrolling, target dashed)</h3>
+      <canvas id="scope" width="1200" height="440"></canvas>
+      <div class="legend" id="traceToggles">
+        <button class="tracebtn" data-trace="target" style="--tc:var(--target)"><span class="sw"></span>target (true product of sines)</button>
+        <button class="tracebtn" data-trace="homo" style="--tc:var(--homo)"><span class="sw"></span>homogeneous low-pass</button>
+        <button class="tracebtn" data-trace="hetero" style="--tc:var(--hetero)"><span class="sw"></span>heterogeneous low-pass</button>
+        <button class="tracebtn" data-trace="band" style="--tc:var(--band)"><span class="sw"></span>band-pass</button>
+      </div>
+      <div class="note" style="margin-top:6px">Click a trace name to show/hide it on the scope.</div>
+    </div>
+
+    <div class="meters">
+      <div class="meter" style="border-color:var(--homo)">
+        <div class="label" style="color:var(--homo)">Homogeneous low-pass — rolling NRMSE</div>
+        <div class="value" id="m_homo">—</div>
+        <div class="bartrack"><div class="barfill" id="b_homo" style="background:var(--homo); width:0%"></div></div>
+        <div class="sub">mean |error| / &sigma;, last 150 samples</div>
+      </div>
+      <div class="meter" style="border-color:var(--hetero)">
+        <div class="label" style="color:var(--hetero)">Heterogeneous low-pass — rolling NRMSE</div>
+        <div class="value" id="m_hetero">—</div>
+        <div class="bartrack"><div class="barfill" id="b_hetero" style="background:var(--hetero); width:0%"></div></div>
+        <div class="sub">mean |error| / &sigma;, last 150 samples</div>
+      </div>
+      <div class="meter" style="border-color:var(--band)">
+        <div class="label" style="color:var(--band)">Band-pass — rolling NRMSE</div>
+        <div class="value" id="m_band">—</div>
+        <div class="bartrack"><div class="barfill" id="b_band" style="background:var(--band); width:0%"></div></div>
+        <div class="sub">mean |error| / &sigma;, last 150 samples</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <h3>How this differs from the static comparison app</h3>
+  <p>
+    Model equations, reservoir construction, and the three neuron dynamics (homogeneous leaky-integrator,
+    heterogeneous leaky-integrator / Tanaka et al. 2022 DTS-ESN, and rectify&rarr;resonate&rarr;delay band-pass
+    pools / Wyffels et al. 2008, structurally motivated by Köndgen et al. 2008's finding that real cortical neurons
+    behave as broadband 2-pole filters) are identical to the static app — see its footer for the full equations and
+    honest caveats. The only difference here: after "Reset &amp; Train" fits the readout for all three conditions
+    once via teacher-forced ridge regression (a quick batch step), the <b>autonomous free-run phase runs forever,
+    one sample at a time</b>, on a scrolling strip-chart, rather than being pre-computed in bulk and plotted as a
+    finished curve. There is no fixed test-set length or repeat-averaging here — it's a single live trial, meant
+    for watching divergence happen rather than for producing publication-quality averaged statistics (use the
+    static app for that). Rolling NRMSE meters use a 150-sample trailing window normalized by a &sigma; estimated
+    once at training time.
+  </p>
+  <h3>References</h3>
+  <p>
+    F. Wyffels, B. Schrauwen, D. Verstraeten, D. Stroobandt, "Band-pass reservoir computing," IJCNN 2008.<br>
+    G. Tanaka, T. Matsumori, H. Yoshida, K. Aihara, "Reservoir computing with diverse timescales for prediction of
+    multiscale dynamics," Phys. Rev. Research 4, L032014 (2022).<br>
+    H. Köndgen, C. Geisler, S. Fusi, X.-J. Wang, H.-R. Lüscher, M. Giugliano, "The dynamical response properties of
+    neocortical neurons to temporally modulated noisy inputs in vitro," Cerebral Cortex 18:2086&ndash;2097 (2008).
+  </p>
+</footer>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// Core reservoir engine — identical math to bandpass_reservoir_demo.html
+// ---------------------------------------------------------------------------
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randn(rng) {
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function createReservoir(N, specRadius, fbScale, biasScale, rng) {
+  const W = new Float64Array(N * N);
+  for (let i = 0; i < N * N; i++) W[i] = rng() * 2 - 1;
+  let v = new Float64Array(N);
+  for (let i = 0; i < N; i++) v[i] = rng() * 2 - 1;
+  let norm = Math.hypot(...v);
+  for (let i = 0; i < N; i++) v[i] /= (norm || 1);
+  let lastNorm = 1;
+  for (let iter = 0; iter < 60; iter++) {
+    const v2 = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      let s = 0; const off = i * N;
+      for (let j = 0; j < N; j++) s += W[off + j] * v[j];
+      v2[i] = s;
+    }
+    lastNorm = Math.hypot(...v2);
+    for (let i = 0; i < N; i++) v2[i] /= (lastNorm || 1);
+    v = v2;
+  }
+  const scale = specRadius / (lastNorm || 1);
+  for (let i = 0; i < N * N; i++) W[i] *= scale;
+
+  const Wfb = new Float64Array(N);
+  for (let i = 0; i < N; i++) Wfb[i] = (rng() * 2 - 1) * fbScale;
+  const bias = new Float64Array(N);
+  for (let i = 0; i < N; i++) bias[i] = randn(rng) * biasScale;
+  return { W, Wfb, bias, N };
+}
+
+function matvec(W, N, x, out) {
+  for (let i = 0; i < N; i++) {
+    let s = 0; const off = i * N;
+    for (let j = 0; j < N; j++) s += W[off + j] * x[j];
+    out[i] = s;
+  }
+}
+
+function makeLeaky(N, alphaArr) {
+  const pre = new Float64Array(N);
+  return function step(res, x, yfb, noiseStd, rng) {
+    matvec(res.W, N, x, pre);
+    const xNew = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      let p = pre[i] + res.Wfb[i] * yfb + res.bias[i];
+      if (noiseStd) p += randn(rng) * noiseStd;
+      const sat = Math.tanh(p);
+      xNew[i] = (1 - alphaArr[i]) * x[i] + alphaArr[i] * sat;
+    }
+    return xNew;
+  };
+}
+function makeHomogeneous(N, alpha) { return makeLeaky(N, new Float64Array(N).fill(alpha)); }
+function makeHeterogeneous(N, alphaMin, alphaMax, rng) {
+  const alphaArr = new Float64Array(N);
+  const lmin = Math.log10(alphaMin), lmax = Math.log10(alphaMax);
+  for (let i = 0; i < N; i++) alphaArr[i] = Math.pow(10, lmin + rng() * (lmax - lmin));
+  return makeLeaky(N, alphaArr);
+}
+
+function makeBandpass(N, numPools, fLow, fHigh, Q, P1, delaySamples) {
+  const b0 = new Float64Array(N), b2 = new Float64Array(N), a1 = new Float64Array(N), a2 = new Float64Array(N);
+  const perPool = Math.ceil(N / numPools);
+  const poolFreq = new Float64Array(numPools);
+  for (let p = 0; p < numPools; p++) {
+    const t = numPools === 1 ? 0 : p / (numPools - 1);
+    const logf = Math.log10(fLow) + t * (Math.log10(fHigh) - Math.log10(fLow));
+    poolFreq[p] = Math.pow(10, logf);
+  }
+  for (let i = 0; i < N; i++) {
+    const pool = Math.min(numPools - 1, Math.floor(i / perPool));
+    const f = Math.min(0.499, poolFreq[pool]);
+    const w = 2 * Math.PI * f;
+    const alpha = Math.sin(w) / (2 * Q);
+    const a0 = 1 + alpha;
+    b0[i] = alpha / a0;
+    b2[i] = -alpha / a0;
+    a1[i] = (-2 * Math.cos(w)) / a0;
+    a2[i] = (1 - alpha) / a0;
+  }
+  const rectPrev1 = new Float64Array(N), rectPrev2 = new Float64Array(N);
+  const filtPrev1 = new Float64Array(N), filtPrev2 = new Float64Array(N);
+  const delayLen = Math.max(1, delaySamples + 1);
+  const ring = [];
+  for (let d = 0; d < delayLen; d++) ring.push(new Float64Array(N));
+  let ringPos = 0;
+  const pre = new Float64Array(N);
+  return function step(res, x, yfb, noiseStd, rng) {
+    matvec(res.W, N, x, pre);
+    const xNew = new Float64Array(N);
+    const curFilt = ring[ringPos];
+    for (let i = 0; i < N; i++) {
+      let p = pre[i] + res.Wfb[i] * yfb + res.bias[i];
+      if (noiseStd) p += randn(rng) * noiseStd;
+      const sat = Math.tanh(p);
+      const rect = Math.max(0, sat - P1);
+      const filt = b0[i] * rect + b2[i] * rectPrev2[i] - a1[i] * filtPrev1[i] - a2[i] * filtPrev2[i];
+      rectPrev2[i] = rectPrev1[i]; rectPrev1[i] = rect;
+      filtPrev2[i] = filtPrev1[i]; filtPrev1[i] = filt;
+      curFilt[i] = filt;
+    }
+    const outPos = (ringPos + 1) % delayLen;
+    for (let i = 0; i < N; i++) xNew[i] = ring[outPos][i];
+    ringPos = outPos;
+    return xNew;
+  };
+}
+
+function solveRidge(dim, XtX, XtY, beta) {
+  for (let i = 0; i < dim; i++) XtX[i * dim + i] += beta;
+  const A = XtX; const b = XtY.slice();
+  for (let col = 0; col < dim; col++) {
+    let piv = col, best = Math.abs(A[col * dim + col]);
+    for (let r = col + 1; r < dim; r++) {
+      const v = Math.abs(A[r * dim + col]);
+      if (v > best) { best = v; piv = r; }
+    }
+    if (piv !== col) {
+      for (let c = 0; c < dim; c++) { const tmp = A[col*dim+c]; A[col*dim+c]=A[piv*dim+c]; A[piv*dim+c]=tmp; }
+      const tmp = b[col]; b[col] = b[piv]; b[piv] = tmp;
+    }
+    const diag = A[col * dim + col] || 1e-12;
+    for (let r = col + 1; r < dim; r++) {
+      const factor = A[r * dim + col] / diag;
+      if (factor === 0) continue;
+      for (let c = col; c < dim; c++) A[r * dim + c] -= factor * A[col * dim + c];
+      b[r] -= factor * b[col];
+    }
+  }
+  const w = new Float64Array(dim);
+  for (let r = dim - 1; r >= 0; r--) {
+    let s = b[r];
+    for (let c = r + 1; c < dim; c++) s -= A[r * dim + c] * w[c];
+    w[r] = s / (A[r * dim + r] || 1e-12);
+  }
+  return w;
+}
+
+// Teacher-forced training. Returns trained readout Wout and the reservoir
+// state at the end of training (the hand-off point for live free-run).
+function trainCondition(stepFn, res, target, Ttrain, washout, noiseStd, beta, rng) {
+  const N = res.N, dim = N + 1;
+  const XtX = new Float64Array(dim * dim);
+  const XtY = new Float64Array(dim);
+  let x = new Float64Array(N);
+  for (let k = 0; k < Ttrain; k++) {
+    x = stepFn(res, x, target[k], noiseStd, rng);
+    if (k >= washout) {
+      const t = target[k + 1];
+      for (let a = 0; a < N; a++) {
+        const xa = x[a];
+        XtY[a] += xa * t;
+        const rowOff = a * dim;
+        for (let c = 0; c < N; c++) XtX[rowOff + c] += xa * x[c];
+        XtX[rowOff + N] += xa;
+      }
+      XtY[N] += t;
+      XtX[N * dim + N] += 1;
+      for (let a = 0; a < N; a++) XtX[N * dim + a] += x[a];
+    }
+  }
+  const Wout = solveRidge(dim, XtX, XtY, beta);
+  return { Wout, xEnd: x };
+}
+
+// ---------------------------------------------------------------------------
+// UI plumbing
+// ---------------------------------------------------------------------------
+const els = {};
+["N","f1","f2","Ttrain","noise","alphaHomo","alphaMin","alphaMax","numPools","Q","speed","window"]
+  .forEach(id => { els[id] = document.getElementById(id); });
+
+function fmt(id, val) {
+  const s = document.getElementById("v_" + id);
+  if (id === "f1" || id === "f2") s.textContent = Number(val).toFixed(4);
+  else if (id === "noise") s.textContent = Number(val).toFixed(3);
+  else if (id === "alphaMin" || id === "alphaMax") s.textContent = Number(val).toFixed(3);
+  else s.textContent = val;
+}
+Object.keys(els).forEach(id => {
+  fmt(id, els[id].value);
+  els[id].addEventListener("input", () => fmt(id, els[id].value));
+});
+
+function readParams() {
+  return {
+    N: +els.N.value,
+    f1: +els.f1.value,
+    f2: +els.f2.value,
+    Ttrain: +els.Ttrain.value,
+    noiseStd: +els.noise.value,
+    alphaHomo: +els.alphaHomo.value,
+    alphaMin: Math.min(+els.alphaMin.value, +els.alphaMax.value),
+    alphaMax: Math.max(+els.alphaMin.value, +els.alphaMax.value),
+    numPools: +els.numPools.value,
+    Q: +els.Q.value,
+    specRadius: 0.95, fbScale: 0.6, biasScale: 0.3, washout: 100, beta: 1e-6, P1: 0.0, delaySamples: 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Live session state
+// ---------------------------------------------------------------------------
+let session = null;   // { res, f1, f2, Ttrain, conditions: {homo,hetero,band}, freeRunIndex, sigma }
+let playing = false;
+let scopeWindow = +els.window.value;
+const buf = { target: [], homo: [], hetero: [], band: [] };
+const visible = { target: true, homo: true, hetero: true, band: true };
+
+document.querySelectorAll("#traceToggles .tracebtn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const trace = btn.dataset.trace;
+    visible[trace] = !visible[trace];
+    btn.classList.toggle("off", !visible[trace]);
+  });
+});
+const noiseRng = mulberry32(999); // unused source for free-run step calls (noiseStd=0 there)
+
+function targetAt(f1, f2, idx) { return Math.sin(2*Math.PI*f1*idx) * Math.sin(2*Math.PI*f2*idx); }
+
+async function resetAndTrain() {
+  playing = false;
+  updatePlayButton();
+  document.getElementById("resetBtn").disabled = true;
+  const status = document.getElementById("status");
+  const p = readParams();
+
+  status.textContent = "building reservoir...";
+  await sleep0();
+  const resRng = mulberry32(Date.now() & 0xffffffff);
+  const res = createReservoir(p.N, p.specRadius, p.fbScale, p.biasScale, resRng);
+
+  const totalTrainLen = p.Ttrain + 1;
+  const target = new Float64Array(totalTrainLen);
+  for (let k = 0; k < totalTrainLen; k++) target[k] = targetAt(p.f1, p.f2, k);
+
+  const fLow = Math.max(1e-4, p.f1 * 0.6);
+  const fHigh = Math.min(0.49, p.f2 * 1.8);
+
+  status.textContent = "training homogeneous low-pass...";
+  await sleep0();
+  const stepHomo = makeHomogeneous(p.N, p.alphaHomo);
+  const trHomo = trainCondition(stepHomo, res, target, p.Ttrain, p.washout, p.noiseStd, p.beta, mulberry32(1));
+
+  status.textContent = "training heterogeneous low-pass...";
+  await sleep0();
+  const stepHetero = makeHeterogeneous(p.N, p.alphaMin, p.alphaMax, mulberry32(2));
+  const trHetero = trainCondition(stepHetero, res, target, p.Ttrain, p.washout, p.noiseStd, p.beta, mulberry32(3));
+
+  status.textContent = "training band-pass...";
+  await sleep0();
+  const stepBand = makeBandpass(p.N, p.numPools, fLow, fHigh, p.Q, p.P1, p.delaySamples);
+  const trBand = trainCondition(stepBand, res, target, p.Ttrain, p.washout, p.noiseStd, p.beta, mulberry32(4));
+
+  // Estimate sigma of the target over a long synthetic stretch for NRMSE normalization.
+  let mean = 0, sigmaN = 4000;
+  for (let k = 0; k < sigmaN; k++) mean += targetAt(p.f1, p.f2, p.Ttrain + k);
+  mean /= sigmaN;
+  let sigma = 0;
+  for (let k = 0; k < sigmaN; k++) sigma += (targetAt(p.f1, p.f2, p.Ttrain + k) - mean) ** 2;
+  sigma = Math.sqrt(sigma / sigmaN) || 1e-6;
+
+  session = {
+    f1: p.f1, f2: p.f2, Ttrain: p.Ttrain, sigma,
+    freeRunIndex: 0,
+    conditions: {
+      homo:   { stepFn: stepHomo,   Wout: trHomo.Wout,   x: trHomo.xEnd,   yfb: target[p.Ttrain] },
+      hetero: { stepFn: stepHetero, Wout: trHetero.Wout, x: trHetero.xEnd, yfb: target[p.Ttrain] },
+      band:   { stepFn: stepBand,   Wout: trBand.Wout,   x: trBand.xEnd,   yfb: target[p.Ttrain] },
+    },
+    res, N: p.N,
+  };
+
+  buf.target.length = 0; buf.homo.length = 0; buf.hetero.length = 0; buf.band.length = 0;
+  document.getElementById("sampleCount").textContent = "0";
+  status.textContent = "trained — playing live free-run";
+  document.getElementById("resetBtn").disabled = false;
+
+  playing = true;
+  updatePlayButton();
+}
+
+function sleep0() { return new Promise(r => setTimeout(r, 0)); }
+
+function dot(Wout, x, N) {
+  let s = Wout[N];
+  for (let a = 0; a < N; a++) s += Wout[a] * x[a];
+  return s;
+}
+
+function advanceOneSample() {
+  if (!session) return;
+  const s = session;
+  const idx = s.Ttrain + 1 + s.freeRunIndex;
+  const truth = targetAt(s.f1, s.f2, idx);
+
+  const c = s.conditions;
+  c.homo.x = c.homo.stepFn(s.res, c.homo.x, c.homo.yfb, 0, noiseRng);
+  const yHomo = dot(c.homo.Wout, c.homo.x, s.N);
+  c.homo.yfb = yHomo;
+
+  c.hetero.x = c.hetero.stepFn(s.res, c.hetero.x, c.hetero.yfb, 0, noiseRng);
+  const yHetero = dot(c.hetero.Wout, c.hetero.x, s.N);
+  c.hetero.yfb = yHetero;
+
+  c.band.x = c.band.stepFn(s.res, c.band.x, c.band.yfb, 0, noiseRng);
+  const yBand = dot(c.band.Wout, c.band.x, s.N);
+  c.band.yfb = yBand;
+
+  buf.target.push(truth); buf.homo.push(yHomo); buf.hetero.push(yHetero); buf.band.push(yBand);
+  const maxLen = Math.max(scopeWindow, 160); // keep enough history for the 150-sample NRMSE window too
+  if (buf.target.length > maxLen) {
+    buf.target.shift(); buf.homo.shift(); buf.hetero.shift(); buf.band.shift();
+  }
+  s.freeRunIndex++;
+}
+
+// ---------------------------------------------------------------------------
+// Rendering: fixed-range scrolling oscilloscope + rolling NRMSE meters
+// ---------------------------------------------------------------------------
+function drawScope() {
+  const canvas = document.getElementById("scope");
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const pad = { l: 44, r: 12, t: 10, b: 24 };
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const yMin = -1.6, yMax = 1.6;
+  const Y = v => pad.t + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+
+  // graticule
+  ctx.strokeStyle = "var(--grid)";
+  ctx.strokeStyle = "#232833";
+  ctx.lineWidth = 1;
+  for (const gv of [-1.5,-1,-0.5,0,0.5,1,1.5]) {
+    const y = Y(gv);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+plotW, y); ctx.stroke();
+  }
+  const nVdiv = 10;
+  for (let i = 0; i <= nVdiv; i++) {
+    const x = pad.l + (i/nVdiv)*plotW;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+plotH); ctx.stroke();
+  }
+  ctx.strokeStyle = "#3a4150";
+  ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(pad.l+plotW, Y(0)); ctx.stroke();
+
+  ctx.fillStyle = "#8b93a7";
+  ctx.font = "11px -apple-system,sans-serif";
+  ctx.fillText("+1.5", 4, Y(1.5)+4);
+  ctx.fillText("0", 4, Y(0)+4);
+  ctx.fillText("-1.5", 4, Y(-1.5)+4);
+
+  ctx.strokeStyle = "#454b58";
+  ctx.strokeRect(pad.l, pad.t, plotW, plotH);
+
+  const n = buf.target.length;
+  if (n < 2) return;
+  const shown = Math.min(n, scopeWindow);
+  const startIdx = n - shown;
+  const X = i => pad.l + (i / (scopeWindow - 1)) * plotW; // newest sample always sits at the right edge
+
+  function plot(arr, color, dashed, lineWidth) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lineWidth;
+    if (dashed) ctx.setLineDash([7,4]); else ctx.setLineDash([]);
+    ctx.beginPath();
+    // right-align: index 0 of visible slice maps to (scopeWindow - shown) so newest is at scopeWindow-1
+    for (let i = 0; i < shown; i++) {
+      const bufIdx = startIdx + i;
+      const xSlot = (scopeWindow - shown) + i;
+      const x = X(xSlot);
+      const y = Y(arr[bufIdx]);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Target drawn last (on top) with a noticeably thicker, brighter dashed line so it stays
+  // legible even when overlapping all three condition traces.
+  if (visible.homo)   plot(buf.homo, getComputedColor("--homo"), false, 1.6);
+  if (visible.hetero) plot(buf.hetero, getComputedColor("--hetero"), false, 1.6);
+  if (visible.band)   plot(buf.band, getComputedColor("--band"), false, 1.6);
+  if (visible.target) plot(buf.target, getComputedColor("--target"), true, 2.8);
+}
+
+function getComputedColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+function updateMeters() {
+  const n = buf.target.length;
+  const winN = Math.min(150, n);
+  if (winN < 5 || !session) return;
+  const sigma = session.sigma;
+  function rollingNRMSE(arr) {
+    let s = 0;
+    for (let i = n - winN; i < n; i++) s += Math.abs(arr[i] - buf.target[i]) / sigma;
+    return s / winN;
+  }
+  const vHomo = rollingNRMSE(buf.homo);
+  const vHetero = rollingNRMSE(buf.hetero);
+  const vBand = rollingNRMSE(buf.band);
+  document.getElementById("m_homo").textContent = vHomo.toFixed(3);
+  document.getElementById("m_hetero").textContent = vHetero.toFixed(3);
+  document.getElementById("m_band").textContent = vBand.toFixed(3);
+  const cap = 2.0;
+  document.getElementById("b_homo").style.width = (Math.min(1, vHomo/cap)*100).toFixed(1) + "%";
+  document.getElementById("b_hetero").style.width = (Math.min(1, vHetero/cap)*100).toFixed(1) + "%";
+  document.getElementById("b_band").style.width = (Math.min(1, vBand/cap)*100).toFixed(1) + "%";
+}
+
+// ---------------------------------------------------------------------------
+// Animation loop with real-time-paced sample advancement
+// ---------------------------------------------------------------------------
+let lastFrameTime = null;
+let accumulator = 0;
+function loop(now) {
+  if (lastFrameTime === null) lastFrameTime = now;
+  const dt = now - lastFrameTime;
+  lastFrameTime = now;
+
+  if (playing && session) {
+    const speed = +els.speed.value; // samples per second
+    accumulator += (dt / 1000) * speed;
+    let nSteps = Math.floor(accumulator);
+    nSteps = Math.min(nSteps, 200); // clamp catch-up burst after e.g. a backgrounded tab
+    accumulator -= Math.floor(accumulator);
+    for (let i = 0; i < nSteps; i++) advanceOneSample();
+    document.getElementById("sampleCount").textContent = String(session.freeRunIndex);
+  }
+
+  drawScope();
+  updateMeters();
+  requestAnimationFrame(loop);
+}
+
+function updatePlayButton() {
+  document.getElementById("playBtn").textContent = playing ? "Pause" : "Play";
+}
+
+document.getElementById("resetBtn").addEventListener("click", () => { resetAndTrain(); });
+document.getElementById("playBtn").addEventListener("click", () => {
+  if (!session) return;
+  playing = !playing;
+  updatePlayButton();
+});
+document.getElementById("stepBtn").addEventListener("click", () => {
+  if (!session) return;
+  playing = false;
+  updatePlayButton();
+  advanceOneSample();
+  document.getElementById("sampleCount").textContent = String(session.freeRunIndex);
+});
+els.window.addEventListener("input", () => { scopeWindow = +els.window.value; });
+
+requestAnimationFrame(loop);
+window.addEventListener("load", () => { resetAndTrain(); });
+</script>
+</body>
+</html>
